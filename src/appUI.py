@@ -109,8 +109,8 @@ class ECGApp(tk.Tk):
         self.T = LIGHT_CLINICAL_THEME  # alias corto para el tema
 
         self.title("ECG Monitor — Análisis Cardiaco en Tiempo Real")
-        self.geometry("1560x940")
-        self.minsize(1280, 780)
+        self.geometry("1400x830")
+        self.minsize(1100, 680)
         self.configure(bg=self.T["bg"])
 
         self.is_running = True
@@ -287,6 +287,59 @@ class ECGApp(tk.Tk):
         except Exception:
             pass
 
+    def _topbar_toggle_hw(self):
+        """Alterna entre modo hardware y simulación desde el topbar."""
+        if self.app_state.esp32_connected:
+            self._restart_reader(port="NONE_DISCONNECT")
+            self.after(500, self._update_topbar_hw_state)
+        else:
+            port = self.port_var.get().strip()
+            if not port or port == "NONE_SIM":
+                return
+            try:
+                baud = int(self.baud_var.get())
+            except Exception:
+                baud = config.BAUDRATE
+            config.SERIAL_PORT = port
+            config.BAUDRATE    = baud
+            self.topbar_hw_btn.config(text="Conectando…", bg=self.T["muted"])
+            self._restart_reader(port=port)
+            self.after(1200, self._update_topbar_hw_state)
+
+    def _topbar_refresh_ports(self):
+        """Actualiza la lista de puertos en el topbar."""
+        ports = list_available_ports()
+        if not ports:
+            return
+        menu = self.topbar_port_menu["menu"]
+        menu.delete(0, "end")
+        for p in ports:
+            menu.add_command(label=p, command=lambda v=p: self.port_var.set(v))
+        if self.port_var.get() not in ports:
+            self.port_var.set(ports[0])
+        # Sincronizar también el menú de la pestaña CONEXIÓN
+        try:
+            self.on_refresh_ports()
+        except Exception:
+            pass
+
+    def _update_topbar_hw_state(self):
+        """Actualiza el botón del topbar según el estado de conexión."""
+        if self.app_state.esp32_connected:
+            self.topbar_hw_btn.config(
+                text="✖ DESCONECTAR",
+                bg=self.T["danger"],
+                activebackground=self.T["danger_active"],
+            )
+            self._set_badge(self.mode_badge_hdr, "HARDWARE", "success")
+        else:
+            self.topbar_hw_btn.config(
+                text="⚡ CONECTAR",
+                bg="#D97706",
+                activebackground="#B45309",
+            )
+            self._set_badge(self.mode_badge_hdr, "SIMULACIÓN", "warning")
+
     def _set_ecg_color(self, color: str):
         """Cambia el color de la línea ECG en tiempo real."""
         try:
@@ -333,15 +386,15 @@ class ECGApp(tk.Tk):
         ecg_outer.pack(fill=tk.BOTH, expand=True, padx=8, pady=(4, 0))
         self._create_ecg_plot(ecg_outer)
 
-        # 3. Tira de metricas (4 tarjetas horizontales)
-        metrics_frame = tk.Frame(root, bg=self.T["bg"], height=86)
-        metrics_frame.pack(fill=tk.X, padx=8, pady=(5, 0))
+        # 3. Tira de metricas (5 tarjetas horizontales)
+        metrics_frame = tk.Frame(root, bg=self.T["bg"], height=68)
+        metrics_frame.pack(fill=tk.X, padx=8, pady=(4, 0))
         metrics_frame.pack_propagate(False)
         self._create_metrics_strip(metrics_frame)
 
         # 4. Panel de pestanas inferior
-        tabs_frame = tk.Frame(root, bg=self.T["bg"], height=248)
-        tabs_frame.pack(fill=tk.X, padx=8, pady=(5, 0))
+        tabs_frame = tk.Frame(root, bg=self.T["bg"], height=162)
+        tabs_frame.pack(fill=tk.X, padx=8, pady=(4, 0))
         tabs_frame.pack_propagate(False)
         self._create_tab_panel(tabs_frame)
 
@@ -402,34 +455,84 @@ class ECGApp(tk.Tk):
             btn.pack(side=tk.LEFT, padx=(0, 3))
             self._lead_buttons[state] = btn
 
-        # — Seccion derecha: badges + reloj —
+        # — Seccion derecha: control hardware + reloj —
         right = tk.Frame(bar, bg=self.T["topbar_bg"])
-        right.pack(side=tk.RIGHT, padx=(0, 14), pady=10)
+        right.pack(side=tk.RIGHT, padx=(0, 14), pady=8)
 
+        # Reloj
         self.clock_label = tk.Label(
             right, text="--:--:--",
             bg=self.T["topbar_bg"], fg=self.T["topbar_text"],
             font=("Segoe UI", 13, "bold"),
         )
-        self.clock_label.pack(side=tk.RIGHT, padx=(12, 0))
+        self.clock_label.pack(side=tk.RIGHT, padx=(10, 0))
 
         tk.Frame(bar, bg=self.T["topbar_sep"], width=1).pack(
-            side=tk.RIGHT, fill=tk.Y, padx=10, pady=8
+            side=tk.RIGHT, fill=tk.Y, padx=8, pady=6
         )
 
-        self.conn_badge_hdr = tk.Label(
-            right, text="DESCONECTADO",
-            font=("Segoe UI", 8, "bold"), padx=9, pady=4, bd=0,
-        )
-        self.conn_badge_hdr.pack(side=tk.RIGHT, padx=(0, 6))
-        self._set_badge(self.conn_badge_hdr, "DESCONECTADO", "danger")
-
+        # Badge de modo (unico, sin duplicado)
         self.mode_badge_hdr = tk.Label(
             right, text="SIMULACIÓN",
             font=("Segoe UI", 8, "bold"), padx=9, pady=4, bd=0,
         )
-        self.mode_badge_hdr.pack(side=tk.RIGHT, padx=(0, 4))
+        self.mode_badge_hdr.pack(side=tk.RIGHT, padx=(0, 6))
         self._set_badge(self.mode_badge_hdr, "SIMULACIÓN", "warning")
+
+        tk.Frame(bar, bg=self.T["topbar_sep"], width=1).pack(
+            side=tk.RIGHT, fill=tk.Y, padx=8, pady=6
+        )
+
+        # ── Zona de conexion hardware (prominente en topbar) ──────
+        hw_zone = tk.Frame(bar, bg=self.T["topbar_bg"])
+        hw_zone.pack(side=tk.RIGHT, padx=(0, 4), pady=7)
+
+        tk.Label(
+            hw_zone, text="HARDWARE:",
+            bg=self.T["topbar_bg"], fg=self.T["topbar_muted"],
+            font=("Segoe UI", 7, "bold"),
+        ).pack(side=tk.LEFT, padx=(0, 4))
+
+        # Dropdown de puerto COM (reutiliza self.port_var del __init__)
+        _ports = list_available_ports() or [config.SERIAL_PORT]
+        if _ports and self.port_var.get() not in _ports:
+            self.port_var.set(_ports[0])
+        self.topbar_port_menu = tk.OptionMenu(hw_zone, self.port_var, *_ports)
+        self.topbar_port_menu.configure(
+            bg=self.T["topbar_btn"], fg=self.T["topbar_text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+            relief="flat", bd=0, font=("Segoe UI", 8), width=7,
+            highlightthickness=0,
+        )
+        self.topbar_port_menu["menu"].configure(
+            bg=self.T["neutral_bg"], fg=self.T["text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+        )
+        self.topbar_port_menu.pack(side=tk.LEFT, padx=(0, 3))
+
+        # Botón refrescar puertos
+        tk.Button(
+            hw_zone, text="↻",
+            command=self._topbar_refresh_ports,
+            bg=self.T["topbar_btn"], fg=self.T["topbar_text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+            relief="flat", bd=0, cursor="hand2",
+            font=("Segoe UI", 9), padx=5, pady=3, highlightthickness=0,
+        ).pack(side=tk.LEFT, padx=(0, 4))
+
+        # Botón principal: CONECTAR / DESCONECTAR
+        self.topbar_hw_btn = tk.Button(
+            hw_zone, text="⚡ CONECTAR",
+            command=self._topbar_toggle_hw,
+            bg="#D97706", fg="#FFFFFF",
+            activebackground="#B45309", activeforeground="#FFFFFF",
+            relief="flat", bd=0, cursor="hand2",
+            font=("Segoe UI", 8, "bold"), padx=10, pady=5, highlightthickness=0,
+        )
+        self.topbar_hw_btn.pack(side=tk.LEFT)
+
+        # Referencia de compatibilidad (usada por _update_connection_panel)
+        self.conn_badge_hdr = self.mode_badge_hdr
 
     # ----------------------------------------------------------
     def _create_ecg_plot(self, parent):
@@ -546,16 +649,16 @@ class ECGApp(tk.Tk):
         c1 = _card(self.T["primary"])
         tk.Label(c1, text="FREC. CARDIACA",
                  bg=self.T["panel"], fg=self.T["muted"],
-                 font=("Segoe UI", 7, "bold")).pack(anchor="center", pady=(6, 0))
+                 font=("Segoe UI", 7, "bold")).pack(anchor="center", pady=(4, 0))
         self.bpm_big_label = tk.Label(
             c1, text="---",
             bg=self.T["panel"], fg=self.T["success"],
-            font=("Segoe UI", 30, "bold"),
+            font=("Segoe UI", 22, "bold"),
         )
         self.bpm_big_label.pack(anchor="center")
-        tk.Label(c1, text="latidos / min",
+        tk.Label(c1, text="lat/min",
                  bg=self.T["panel"], fg=self.T["muted"],
-                 font=("Segoe UI", 7)).pack(anchor="center", pady=(0, 4))
+                 font=("Segoe UI", 7)).pack(anchor="center", pady=(0, 2))
 
         # — Tarjeta Ritmo —
         c2 = _card(self.T["success"])
@@ -600,13 +703,13 @@ class ECGApp(tk.Tk):
                  bg=self.T["panel"], fg=self.T["muted"],
                  font=("Segoe UI", 7, "bold")).pack(anchor="center", pady=(6, 0))
         self.rr_interval_badge = tk.Label(
-            c5, text="---", padx=12, pady=5, bd=0,
-            font=("Segoe UI", 16, "bold"),
+            c5, text="---", padx=10, pady=3, bd=0,
+            font=("Segoe UI", 13, "bold"),
         )
         self.rr_interval_badge.pack(anchor="center")
         tk.Label(c5, text="ms",
                  bg=self.T["panel"], fg=self.T["muted"],
-                 font=("Segoe UI", 7)).pack(anchor="center", pady=(0, 4))
+                 font=("Segoe UI", 7)).pack(anchor="center", pady=(0, 2))
         self._set_badge(self.rr_interval_badge, "---", "accent")
 
     # ----------------------------------------------------------
@@ -1542,26 +1645,32 @@ class ECGApp(tk.Tk):
         conn = self.app_state.esp32_connected
 
         if conn:
-            self._set_badge(self.hw_mode_badge,    "MODO HARDWARE",  "success",
+            self._set_badge(self.hw_mode_badge,   "MODO HARDWARE",  "success",
                             font=("Segoe UI", 10, "bold"))
-            self._set_badge(self.conn_esp32_badge,  "EN LÍNEA",        "success")
+            self._set_badge(self.conn_esp32_badge, "EN LÍNEA",       "success")
             self.connect_btn.config(text="Desconectar", bg=self.T["danger"])
-            self._set_badge(self.conn_badge_hdr,   "EN LÍNEA",  "success")
-            self._set_badge(self.mode_badge_hdr,   "HARDWARE",  "success")
+            self._set_badge(self.mode_badge_hdr,  "HARDWARE",        "success")
+            # Topbar
+            if hasattr(self, "topbar_hw_btn"):
+                self.topbar_hw_btn.config(
+                    text="✖ DESCONECTAR", bg=self.T["danger"],
+                    activebackground=self.T["danger_active"],
+                )
         else:
-            if sim:
-                self._set_badge(self.hw_mode_badge,   "MODO SIMULACIÓN", "warning",
-                                font=("Segoe UI", 10, "bold"))
-                self._set_badge(self.conn_badge_hdr,  "SIMULACIÓN",      "warning")
-                self._set_badge(self.mode_badge_hdr,  "SIMULACIÓN",      "warning")
-            else:
-                self._set_badge(self.hw_mode_badge,   "DESCONECTADO",   "danger",
-                                font=("Segoe UI", 10, "bold"))
-                self._set_badge(self.conn_badge_hdr,  "DESCONECTADO",   "danger")
-                self._set_badge(self.mode_badge_hdr,  "DESCONECTADO",   "danger")
-
+            lbl  = "MODO SIMULACIÓN" if sim else "DESCONECTADO"
+            kind = "warning"          if sim else "danger"
+            self._set_badge(self.hw_mode_badge,   lbl,  kind,
+                            font=("Segoe UI", 10, "bold"))
+            self._set_badge(self.mode_badge_hdr,
+                            "SIMULACIÓN" if sim else "DESCONECTADO", kind)
             self._set_badge(self.conn_esp32_badge, "DESCONECTADO", "danger")
             self.connect_btn.config(text="Conectar", bg=self.T["primary"])
+            # Topbar
+            if hasattr(self, "topbar_hw_btn"):
+                self.topbar_hw_btn.config(
+                    text="⚡ CONECTAR", bg="#D97706",
+                    activebackground="#B45309",
+                )
 
         self._set_badge(self.conn_samples_badge,
                         f"{self.app_state.sample_count:,}", "neutral")
