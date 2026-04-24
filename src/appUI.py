@@ -109,8 +109,8 @@ class ECGApp(tk.Tk):
         self.T = LIGHT_CLINICAL_THEME  # alias corto para el tema
 
         self.title("ECG Monitor — Análisis Cardiaco en Tiempo Real")
-        self.geometry("1400x830")
-        self.minsize(1100, 680)
+        self.geometry("1400x860")
+        self.minsize(1100, 760)
         self.configure(bg=self.T["bg"])
 
         self.is_running = True
@@ -378,23 +378,25 @@ class ECGApp(tk.Tk):
         # 1. Topbar: titulo + botones de derivacion + badges + reloj
         self._create_topbar(root)
 
-        # 2. Grafico ECG (full width, ocupa el espacio disponible)
+        # 2. Grafico ECG — altura fija (~25 % menor que a pantalla completa)
         ecg_outer = tk.Frame(
             root, bg=self.T["panel"],
-            highlightthickness=1, highlightbackground=self.T["border"], bd=0
+            highlightthickness=1, highlightbackground=self.T["border"], bd=0,
+            height=300,
         )
-        ecg_outer.pack(fill=tk.BOTH, expand=True, padx=8, pady=(4, 0))
+        ecg_outer.pack(fill=tk.X, padx=8, pady=(4, 0))
+        ecg_outer.pack_propagate(False)
         self._create_ecg_plot(ecg_outer)
 
-        # 3. Tira de metricas (5 tarjetas horizontales)
-        metrics_frame = tk.Frame(root, bg=self.T["bg"], height=68)
+        # 3. Tira de metricas (5 tarjetas)
+        metrics_frame = tk.Frame(root, bg=self.T["bg"], height=66)
         metrics_frame.pack(fill=tk.X, padx=8, pady=(4, 0))
         metrics_frame.pack_propagate(False)
         self._create_metrics_strip(metrics_frame)
 
-        # 4. Panel de pestanas inferior
-        tabs_frame = tk.Frame(root, bg=self.T["bg"], height=162)
-        tabs_frame.pack(fill=tk.X, padx=8, pady=(4, 0))
+        # 4. Panel de pestanas inferior — más alto gracias al ECG reducido
+        tabs_frame = tk.Frame(root, bg=self.T["bg"], height=272)
+        tabs_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(4, 0))
         tabs_frame.pack_propagate(False)
         self._create_tab_panel(tabs_frame)
 
@@ -540,52 +542,49 @@ class ECGApp(tk.Tk):
         Grafico matplotlib con tema claro.
         Fondo blanco, waveform azul, grid azul claro, picos rojo, pace ambar+violeta.
         """
+        # Barra compacta: derivación activa + leyenda de colores
         title_bar = tk.Frame(parent, bg=self.T["panel"])
-        title_bar.pack(fill=tk.X, padx=14, pady=(10, 4))
+        title_bar.pack(fill=tk.X, padx=10, pady=(4, 2))
 
         tk.Label(
-            title_bar, text="Señal ECG en Tiempo Real",
-            bg=self.T["panel"], fg=self.T["title"],
-            font=("Segoe UI", 12, "bold"),
+            title_bar, text="ECG —",
+            bg=self.T["panel"], fg=self.T["muted"],
+            font=("Segoe UI", 8, "bold"),
         ).pack(side=tk.LEFT)
 
         self.lead_title_label = tk.Label(
             title_bar, text="Derivación II",
             bg=self.T["panel"], fg=self.T["primary"],
-            font=("Segoe UI", 11, "bold"),
+            font=("Segoe UI", 9, "bold"),
         )
-        self.lead_title_label.pack(side=tk.LEFT, padx=(12, 0))
+        self.lead_title_label.pack(side=tk.LEFT, padx=(4, 0))
 
-        # Leyenda visual de colores del gráfico
+        # Leyenda de colores (compacta)
         legend_frame = tk.Frame(title_bar, bg=self.T["panel"])
         legend_frame.pack(side=tk.RIGHT)
-
-        _LEGEND = [
+        for col, lbl in [
             (self.T["ecg_line"],      "ECG"),
             (self.T["peak"],          "Pico R"),
             (self.T["qrs_highlight"], "QRS"),
             (self.T["pace_spike"],    "Pace +"),
             ("#7C3AED",               "Pace −"),
-        ]
-        for col, lbl in _LEGEND:
+        ]:
             tk.Label(legend_frame, text="●", bg=self.T["panel"], fg=col,
-                     font=("Segoe UI", 10)).pack(side=tk.LEFT, padx=(6, 1))
+                     font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(5, 1))
             tk.Label(legend_frame, text=lbl, bg=self.T["panel"], fg=self.T["muted"],
-                     font=("Segoe UI", 7)).pack(side=tk.LEFT, padx=(0, 4))
-
-        tk.Frame(parent, bg=self.T["border"], height=1).pack(fill=tk.X, padx=14)
+                     font=("Segoe UI", 7)).pack(side=tk.LEFT, padx=(0, 3))
 
         # ── Figura matplotlib (colores claros) ────────────────────
-        self.fig, self.ax = plt.subplots(figsize=(10, 5), dpi=98)
+        self.fig, self.ax = plt.subplots(figsize=(10, 2.8), dpi=96)
         self.fig.patch.set_facecolor(self.T["panel"])
         self.ax.set_facecolor(self.T["plot_bg"])
 
         for sp in self.ax.spines.values():
             sp.set_color(self.T["plot_border"])
 
-        self.ax.tick_params(colors=self.T["plot_text"], labelsize=9)
-        self.ax.set_xlabel("Tiempo (s)", color=self.T["plot_text"], fontsize=10)
-        self.ax.set_ylabel("Amplitud (mV)", color=self.T["plot_text"], fontsize=10)
+        self.ax.tick_params(colors=self.T["plot_text"], labelsize=8)
+        self.ax.set_xlabel("Tiempo (s)", color=self.T["plot_text"], fontsize=8)
+        self.ax.set_ylabel("mV", color=self.T["plot_text"], fontsize=8)
         self.ax.grid(True, color=self.T["grid"], alpha=0.9, linewidth=0.6,
                      linestyle="-", which="both")
         self.ax.margins(x=0)
@@ -623,7 +622,7 @@ class ECGApp(tk.Tk):
             color=self.T["peak"], zorder=7, markeredgewidth=0
         )
 
-        self.fig.subplots_adjust(left=0.07, right=0.98, top=0.94, bottom=0.12)
+        self.fig.subplots_adjust(left=0.06, right=0.99, top=0.90, bottom=0.16)
 
         self.mpl_canvas = FigureCanvasTkAgg(self.fig, master=parent)
         mpl_widget = self.mpl_canvas.get_tk_widget()
@@ -1112,115 +1111,82 @@ class ECGApp(tk.Tk):
         self._set_badge(self.sim_status_badge, "EN EJECUCIÓN", "success")
 
     def _build_tab_hardware(self, parent):
-        """Pestaña HARDWARE: mapa de pines ESP32 + diagrama de conexion."""
-        # Col 1: entradas al ESP32
-        col1 = self._tab_col(parent, "PINES ESP32 — ENTRADAS ADC")
-        _IN_PINS = [
-            ("ECG Señal Analógica", "GPIO36 (VP / ADC1_CH0)"),
-            ("MUX Control A",       "GPIO26"),
-            ("MUX Control B",       "GPIO27"),
-            ("MUX Control C",       "GPIO14"),
-            ("Alimentación VCC",    "3V3  (3.3 V)"),
-            ("Tierra (GND)",        "GND"),
-        ]
-        for lbl, pin in _IN_PINS:
-            row = tk.Frame(col1, bg=self.T["panel"])
+        """Pestaña HARDWARE: referencia de pines ESP32 y tabla de selección de derivaciones."""
+
+        def _pin_row(container, label, value, kind="info"):
+            bg = self.T["info_bg"]    if kind == "info"    else self.T["warning_bg"]
+            fg = self.T["info_fg"]    if kind == "info"    else self.T["warning_fg"]
+            row = tk.Frame(container, bg=self.T["panel"])
             row.pack(fill=tk.X, pady=2)
-            tk.Label(row, text=lbl, bg=self.T["panel"], fg=self.T["text"],
-                     font=("Segoe UI", 7, "bold"), anchor="w").pack(side=tk.LEFT, expand=True, fill=tk.X)
-            tk.Label(row, text=pin, bg=self.T["info_bg"], fg=self.T["info_fg"],
-                     font=("Segoe UI", 7, "bold"), padx=5, pady=1).pack(side=tk.RIGHT)
+            tk.Label(row, text=label, bg=self.T["panel"], fg=self.T["text"],
+                     font=("Segoe UI", 8), anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True)
+            tk.Label(row, text=value, bg=bg, fg=fg,
+                     font=("Segoe UI", 8, "bold"), padx=6, pady=2).pack(side=tk.RIGHT)
 
-        # Col 2: salidas del ESP32
-        col2 = self._tab_col(parent, "PINES ESP32 — SALIDAS MARCAPASOS")
-        _OUT_PINS = [
-            ("DAC1 — Fase positiva (+)", "GPIO25  (DAC1)"),
-            ("DAC2 — Fase negativa (−)", "GPIO26  (DAC2)"),
-            ("UART TX → PC",            "GPIO1   (TX0)"),
-            ("UART RX ← PC",            "GPIO3   (RX0)"),
-            ("LED estado",              "GPIO2   (LED azul)"),
+        # ── Columna 1: Entradas al ESP32 ─────────────────────────
+        col1 = self._tab_col(parent, "ENTRADAS — ESP32")
+        _pin_row(col1, "ECG analógico",     "GPIO 36  (ADC1_CH0)")
+        _pin_row(col1, "MUX — línea A",     "GPIO 26")
+        _pin_row(col1, "MUX — línea B",     "GPIO 27")
+        _pin_row(col1, "MUX — línea C",     "GPIO 14")
+        _pin_row(col1, "Referencia VCC",    "3V3  (3.3 V)")
+        _pin_row(col1, "Tierra",            "GND")
+
+        # ── Columna 2: Salidas del ESP32 ──────────────────────────
+        col2 = self._tab_col(parent, "SALIDAS — ESP32")
+        _pin_row(col2, "Marcapasos  fase +",  "GPIO 25  (DAC 1)", kind="warn")
+        _pin_row(col2, "Marcapasos  fase −",  "GPIO 26  (DAC 2)", kind="warn")
+        _pin_row(col2, "Comunicación TX→PC",  "GPIO  1  (UART0 TX)", kind="warn")
+        _pin_row(col2, "Comunicación RX←PC",  "GPIO  3  (UART0 RX)", kind="warn")
+        _pin_row(col2, "Velocidad UART",      "115 200 baud", kind="warn")
+
+        # ── Columna 3: Tabla de verdad MUX CD4051 ─────────────────
+        col3 = self._tab_col(parent, "MUX CD4051 — SELECCIÓN")
+
+        # Encabezado de tabla
+        hdr = tk.Frame(col3, bg=self.T["neutral_bg"])
+        hdr.pack(fill=tk.X, pady=(0, 3))
+        for txt, w in [("A", 3), ("B", 3), ("C", 3), ("Derivación", 10)]:
+            tk.Label(hdr, text=txt, bg=self.T["neutral_bg"], fg=self.T["neutral_fg"],
+                     font=("Segoe UI", 7, "bold"), width=w, anchor="center").pack(side=tk.LEFT)
+
+        _MUX_TABLE = [
+            ("0", "0", "0", "I"),
+            ("1", "0", "0", "II"),
+            ("0", "1", "0", "III"),
+            ("1", "1", "0", "aVR"),
+            ("0", "0", "1", "aVL"),
+            ("1", "0", "1", "aVF"),
         ]
-        for lbl, pin in _OUT_PINS:
-            row = tk.Frame(col2, bg=self.T["panel"])
-            row.pack(fill=tk.X, pady=2)
-            tk.Label(row, text=lbl, bg=self.T["panel"], fg=self.T["text"],
-                     font=("Segoe UI", 7, "bold"), anchor="w").pack(side=tk.LEFT, expand=True, fill=tk.X)
-            tk.Label(row, text=pin, bg=self.T["warning_bg"], fg=self.T["warning_fg"],
-                     font=("Segoe UI", 7, "bold"), padx=5, pady=1).pack(side=tk.RIGHT)
+        for a, b, c, lead in _MUX_TABLE:
+            r = tk.Frame(col3, bg=self.T["panel"])
+            r.pack(fill=tk.X, pady=1)
+            for val, w in [(a, 3), (b, 3), (c, 3)]:
+                tk.Label(r, text=val, bg=self.T["neutral_bg"], fg=self.T["text"],
+                         font=("Segoe UI", 8), width=w, anchor="center").pack(side=tk.LEFT)
+            tk.Label(r, text=lead, bg=self.T["info_bg"], fg=self.T["info_fg"],
+                     font=("Segoe UI", 8, "bold"), padx=8, anchor="center").pack(side=tk.LEFT, padx=(4, 0))
 
-        # Col 3: MUX CD4051
-        col3 = self._tab_col(parent, "MUX CD4051 — DERIVACIONES")
-        _MUX = [
-            ("A=0 B=0 C=0", "Derivación  I"),
-            ("A=1 B=0 C=0", "Derivación  II"),
-            ("A=0 B=1 C=0", "Derivación  III"),
-            ("A=1 B=1 C=0", "Derivación  aVR"),
-            ("A=0 B=0 C=1", "Derivación  aVL"),
-            ("A=1 B=0 C=1", "Derivación  aVF"),
+        # ── Columna 4: Pasos para conectar hardware ───────────────
+        col4 = self._tab_col(parent, "CÓMO CONECTAR EL HARDWARE", sep=False, min_width=210)
+
+        pasos = [
+            ("1", "Conectar el ESP32 al PC por USB."),
+            ("2", "Clic en  ↻  para actualizar la lista de puertos."),
+            ("3", "Seleccionar el puerto COM del ESP32 en el menú."),
+            ("4", "Presionar  ⚡ CONECTAR  en la barra superior."),
+            ("5", "El badge cambia a  HARDWARE  cuando hay señal."),
+            ("6", "Para volver a simulación: presionar  ✖ DESCONECTAR."),
         ]
-        for state, lead in _MUX:
-            row = tk.Frame(col3, bg=self.T["panel"])
-            row.pack(fill=tk.X, pady=2)
-            tk.Label(row, text=state, bg=self.T["neutral_bg"], fg=self.T["neutral_fg"],
-                     font=("Segoe UI", 7), padx=4, pady=1).pack(side=tk.LEFT)
-            tk.Label(row, text=lead, bg=self.T["panel"], fg=self.T["primary"],
-                     font=("Segoe UI", 7, "bold")).pack(side=tk.RIGHT)
-
-        # Col 4: diagrama canvas
-        col4 = self._tab_col(parent, "DIAGRAMA DE BLOQUES", sep=False, min_width=230)
-        hw_canvas = tk.Canvas(
-            col4, bg=self.T["plot_bg"], highlightthickness=1,
-            highlightbackground=self.T["border"], height=150, width=220,
-        )
-        hw_canvas.pack(fill=tk.X, pady=4)
-        self.after(400, lambda: self._draw_hw_diagram(hw_canvas))
-
-    def _draw_hw_diagram(self, canvas):
-        """Dibuja diagrama de bloques del sistema en el canvas de hardware."""
-        canvas.update_idletasks()
-        W = canvas.winfo_width() or 220
-        H = 150
-
-        canvas.delete("all")
-        BG    = self.T["plot_bg"]
-        BLUE  = self.T["primary"]
-        AMBER = self.T["warning"]
-        GREEN = self.T["success"]
-        MUTED = self.T["muted"]
-        TEXT  = self.T["text"]
-
-        def _box(x, y, w, h, col, label, sub=None):
-            canvas.create_rectangle(x, y, x+w, y+h, fill=col, outline=MUTED, width=1)
-            canvas.create_text(x+w//2, y+h//2-(5 if sub else 0), text=label,
-                               fill="white", font=("Segoe UI", 7, "bold"), anchor="center")
-            if sub:
-                canvas.create_text(x+w//2, y+h//2+7, text=sub,
-                                   fill="white", font=("Segoe UI", 6), anchor="center")
-
-        def _arrow(x1, y1, x2, y2, col=MUTED):
-            canvas.create_line(x1, y1, x2, y2, fill=col, width=1, arrow=tk.LAST)
-
-        # Bloques
-        _box(4,   55, 38, 24, "#6B7280", "Elect.", "ECG")
-        _box(54,  45, 40, 40, "#0891B2", "MUX",   "CD4051")
-        _box(110, 45, 46, 40, BLUE,      "ESP32",  "ADC")
-        _box(168, 10, 46, 28, "#7C3AED", "PC",     "Python")
-        _box(168, 75, 46, 28, AMBER,     "Pace",   "DAC out")
-
-        # Flechas
-        _arrow(42,  67, 54,  67, GREEN)     # Electrodos → MUX
-        _arrow(94,  67, 110, 67, GREEN)     # MUX → ESP32
-        _arrow(156, 55, 168, 28, BLUE)      # ESP32 → PC
-        _arrow(156, 75, 168, 85, AMBER)     # ESP32 → Marcapasos
-
-        # Labels de flechas
-        canvas.create_text(99, 60, text="ADC", fill=MUTED, font=("Segoe UI", 6))
-        canvas.create_text(160, 40, text="USB", fill=MUTED, font=("Segoe UI", 6))
-        canvas.create_text(162, 83, text="DAC", fill=AMBER, font=("Segoe UI", 6))
-
-        # Notas al pie
-        canvas.create_text(W//2, H-10, text="↑ 1000 Hz · 12-bit ADC · UART 115200",
-                           fill=MUTED, font=("Segoe UI", 6), anchor="center")
+        for num, texto in pasos:
+            fila = tk.Frame(col4, bg=self.T["panel"])
+            fila.pack(fill=tk.X, pady=3)
+            tk.Label(fila, text=num, bg=self.T["primary"], fg="white",
+                     font=("Segoe UI", 8, "bold"), width=2, anchor="center",
+                     padx=4, pady=2).pack(side=tk.LEFT)
+            tk.Label(fila, text=texto, bg=self.T["panel"], fg=self.T["text"],
+                     font=("Segoe UI", 7), wraplength=165, justify="left",
+                     anchor="w").pack(side=tk.LEFT, padx=(6, 0), fill=tk.X, expand=True)
 
     # ----------------------------------------------------------
     def _create_status_bar(self, parent):
@@ -1288,12 +1254,9 @@ class ECGApp(tk.Tk):
     # ==============================================================
 
     def _tab_col(self, parent, title=None, sep=True, min_width=160):
-        """
-        Columna vertical dentro del panel de pestanas.
-        Las columnas se apilan horizontalmente (side=LEFT).
-        """
-        col = tk.Frame(parent, bg=self.T["panel"], padx=14, pady=6)
-        col.pack(side=tk.LEFT, fill=tk.Y)
+        """Columna vertical dentro del panel de pestañas."""
+        col = tk.Frame(parent, bg=self.T["panel"], padx=12, pady=8)
+        col.pack(side=tk.LEFT, fill=tk.BOTH)
 
         if min_width:
             col.configure(width=min_width)
@@ -1304,7 +1267,7 @@ class ECGApp(tk.Tk):
                 col, text=title,
                 bg=self.T["panel"], fg=self.T["muted"],
                 font=("Segoe UI", 7, "bold"),
-            ).pack(anchor="w", pady=(0, 5))
+            ).pack(anchor="w", pady=(0, 6))
 
         if sep:
             tk.Frame(parent, bg=self.T["border"], width=1).pack(
@@ -1364,9 +1327,9 @@ class ECGApp(tk.Tk):
         )
 
     def _row(self, parent, label_text, help_text=None):
-        """Fila etiqueta (izquierda) + widget (derecha) dentro de una columna de pestana."""
+        """Fila etiqueta (izquierda) + widget (derecha) dentro de una columna de pestañas."""
         row = tk.Frame(parent, bg=self.T["panel"])
-        row.pack(fill=tk.X, pady=3)
+        row.pack(fill=tk.X, pady=5)
 
         left = tk.Frame(row, bg=self.T["panel"])
         left.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -1493,8 +1456,7 @@ class ECGApp(tk.Tk):
             self.lead_title_label.config(text=f"Derivación {label}")
 
         if hasattr(self, "ax"):
-            self.ax.set_title(f"Señal ECG  —  Derivación {label}",
-                              color=self.T["plot_text"], fontsize=11, pad=6)
+            self.ax.set_title("")   # título se muestra en la barra tkinter superior
 
     # ==============================================================
     # ── HELPERS DE SEÑAL ECG (sin cambios) ────────────────────────
