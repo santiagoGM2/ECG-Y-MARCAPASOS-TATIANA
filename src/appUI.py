@@ -1,17 +1,16 @@
 """
-appUI.py
-Interfaz grafica principal del Monitor ECG + Marcapasos.
+appUI.py  [REDISEÑADO — Clinical Light Theme]
 
-Tema visual: ICU Dark — fondo negro, waveform cyan, alertas rojo.
-Layout    : Header | Grafico ECG (70%) + Sidebar (30%) | Status Bar
+CAMBIOS VISUALES (logica de señal, deteccion y serial INTACTAS):
+  - Tema: ICU Dark  →  Clinical Light (blanco, navy, azul, ambar)
+  - Layout: Header+Sidebar-derecho  →  Topbar+ECG-fullwidth+Tira-metricas+Panel-pestanas+Status
+  - Derivaciones: panel lateral scrollable  →  botones en topbar horizontal
+  - Controles: 6 paneles verticales  →  5 pestanas horizontales en la parte inferior
+  - Colores ECG: fondo oscuro+cyan  →  fondo blanco+azul fuerte
+  - Tipografia: misma fuente Segoe UI, pesos y tamanos reorganizados
 
-Paneles del sidebar (scrollable):
-  1. SIGNOS VITALES        - BPM grande, clasificación de ritmo, QRS detectados, calidad de señal
-  2. SELECCIÓN DERIVACIÓN  - 6 botones de derivación + escaneo automático
-  3. MARCAPASOS            - Disparo manual, amplitud, frecuencia, vista previa bifásica, auto-estimulación
-  4. AJUSTES DE SEÑAL      - Umbrales, ganancia, ventana, Y máx, refresco
-  5. CONEXIÓN              - Puerto, baud rate, conectar/desconectar, estado
-  6. SIMULACIÓN            - Frec. cardiaca, amplitud, ruido, arritmia, tipo de forma
+Tema visual: Clinical Light — fondo blanco/gris claro, waveform azul, topbar azul marino.
+Layout    : Topbar | ECG (full width, expansible) | Metricas | Pestanas | Status bar
 """
 
 import tkinter as tk
@@ -35,50 +34,65 @@ from .peak_detection import (
 )
 
 # =========================================================
-# -------------------- TEMA ICU DARK ----------------------
+# ----------- TEMA CLINICAL LIGHT (reemplaza ICU Dark) ----
 # =========================================================
 
-DARK_ICU_THEME = {
-    "name":          "ICU Dark",
-    "bg":            "#0B1220",
-    "panel":         "#111827",
-    "border":        "#1F2937",
-    "text":          "#E5E7EB",
-    "muted":         "#94A3B8",
-    "title":         "#F8FAFC",
-    "primary":       "#3B82F6",
-    "primary_active":"#2563EB",
-    "accent":        "#22D3EE",
-    "accent_active": "#06B6D4",
-    "success":       "#10B981",
-    "warning":       "#FBBF24",
-    "danger":        "#EF4444",
-    "danger_active": "#DC2626",
-    "neutral_bg":    "#1B2636",
-    "neutral_fg":    "#CBD5E1",
-    "info_bg":       "#13233B",
-    "info_fg":       "#60A5FA",
-    "accent_bg":     "#0F2E2B",
-    "accent_fg":     "#2DD4BF",
-    "success_bg":    "#0F2A23",
-    "success_fg":    "#34D399",
-    "warning_bg":    "#3A2A0D",
-    "warning_fg":    "#FBBF24",
-    "danger_bg":     "#3A1418",
-    "danger_fg":     "#F87171",
-    "button_text":   "#FFFFFF",
-    "plot_bg":       "#0F172A",
-    "plot_border":   "#243244",
-    "plot_text":     "#E5E7EB",
-    "grid":          "#1E2D42",
-    "ecg_line":      "#22D3EE",
-    "qrs_highlight": "#22D3EE",
-    "pace_spike":    "#F59E0B",
-    "peak":          "#F87171",
-    "baseline":      "#334155",
+LIGHT_CLINICAL_THEME = {
+    "name":           "Clinical Light",
+    # Cromo general
+    "bg":             "#EEF2F7",
+    "panel":          "#FFFFFF",
+    "border":         "#CBD5E6",
+    "text":           "#1E293B",
+    "muted":          "#64748B",
+    "title":          "#0F172A",
+    # Acciones
+    "primary":        "#2563EB",
+    "primary_active": "#1D4ED8",
+    "accent":         "#0891B2",
+    "accent_active":  "#0E7490",
+    "success":        "#059669",
+    "warning":        "#D97706",
+    "danger":         "#DC2626",
+    "danger_active":  "#B91C1C",
+    # Fondos de badge
+    "neutral_bg":     "#F1F5F9",
+    "neutral_fg":     "#475569",
+    "info_bg":        "#EFF6FF",
+    "info_fg":        "#1D4ED8",
+    "accent_bg":      "#ECFEFF",
+    "accent_fg":      "#0E7490",
+    "success_bg":     "#ECFDF5",
+    "success_fg":     "#065F46",
+    "warning_bg":     "#FFFBEB",
+    "warning_fg":     "#92400E",
+    "danger_bg":      "#FEF2F2",
+    "danger_fg":      "#991B1B",
+    "button_text":    "#FFFFFF",
+    # Grafico ECG — colores completamente distintos al original
+    "plot_bg":        "#FAFCFF",
+    "plot_border":    "#C5D4EC",
+    "plot_text":      "#334155",
+    "grid":           "#DCE8F5",
+    "ecg_line":       "#1A56DB",       # azul fuerte (original: cyan #22D3EE)
+    "qrs_highlight":  "#3B82F6",       # azul medio para QRS
+    "pace_spike":     "#D97706",       # ambar positivo (original: naranja #F59E0B)
+    "peak":           "#DC2626",       # rojo marcadores R
+    "baseline":       "#94A3B8",
+    # Topbar
+    "topbar_bg":      "#1E3A5F",
+    "topbar_text":    "#F0F6FF",
+    "topbar_muted":   "#93C5FD",
+    "topbar_sep":     "#2D5A8E",
+    "topbar_btn":     "#2D5A8E",
+    # Pestanas
+    "tab_active_bg":  "#1E3A5F",
+    "tab_active_fg":  "#FFFFFF",
+    "tab_idle_bg":    "#DDE7F5",
+    "tab_idle_fg":    "#1E3A5F",
+    "tab_bar_bg":     "#C7D8EF",
 }
 
-# Derivadas estilo ICU: resaltado activo
 _LEAD_NAMES = ["I", "II", "III", "aVR", "aVL", "aVF"]
 
 
@@ -92,9 +106,9 @@ class ECGApp(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        self.T = DARK_ICU_THEME  # alias corto para el tema
+        self.T = LIGHT_CLINICAL_THEME  # alias corto para el tema
 
-        self.title("Monitor ECG de Signos Vitales")
+        self.title("ECG Monitor — Análisis Cardiaco en Tiempo Real")
         self.geometry("1560x940")
         self.minsize(1280, 780)
         self.configure(bg=self.T["bg"])
@@ -102,10 +116,9 @@ class ECGApp(tk.Tk):
         self.is_running = True
 
         # ── Estado compartido y lector serial ─────────────────────
-        self.app_state     = AppState(master=self)
+        self.app_state = AppState(master=self)
 
-        # Iniciar siempre en simulación al abrir la app.
-        # La conexión al hardware se hace únicamente al presionar “Conectar”.
+        # Iniciar siempre en simulacion al abrir la app.
         config.SERIAL_PORT = "NONE_SIM"
         self.serial_reader = SerialReader(self.app_state)
 
@@ -122,12 +135,12 @@ class ECGApp(tk.Tk):
         self.auto_scan_active         = False
 
         # ── Variables de conexion ─────────────────────────────────
-        ports              = list_available_ports()
-        default_port       = config.SERIAL_PORT if not ports else (
+        ports        = list_available_ports()
+        default_port = config.SERIAL_PORT if not ports else (
             config.SERIAL_PORT if config.SERIAL_PORT in ports else ports[0]
         )
-        self.port_var      = tk.StringVar(value=default_port)
-        self.baud_var      = tk.StringVar(value=str(config.BAUDRATE))
+        self.port_var = tk.StringVar(value=default_port)
+        self.baud_var = tk.StringVar(value=str(config.BAUDRATE))
 
         # ── Variables de simulacion ───────────────────────────────
         self.sim_hr_var    = tk.DoubleVar(value=float(getattr(config, "SIMULATION_HEART_RATE", 72)))
@@ -136,20 +149,29 @@ class ECGApp(tk.Tk):
         self.sim_wf_var    = tk.StringVar(value="ECG NORMAL")
 
         # ── Estado interno del marcapasos visual ──────────────────
-        self._spike_x_sec  = None    # posicion x del spike en el grafico (segundos)
-        self._spike_x2_sec = None    # fin del spike (fase negativa)
+        self._spike_x_sec  = None
+        self._spike_x2_sec = None
 
-        # Contador de frames para rate-limiting de paneles (no graficos)
-        self._frame_count = 0
-
-        # Indices y caches para evitar trabajo redundante
+        self._frame_count        = 0
         self._last_qrs_abs_idx   = 0
         self._last_qrs_complexes = []
-        self._vital_cache        = None  # (bpm_round, rhythm, qrs_count, sig_ok)
+        self._vital_cache        = None
+        self._last_rr_ms         = 0.0
+
+        # ── Variables de visualizacion configurables ──────────────
+        self.show_grid_var     = tk.BooleanVar(value=True)
+        self.show_peaks_var    = tk.BooleanVar(value=True)
+        self.show_qrs_var      = tk.BooleanVar(value=True)
+        self.show_baseline_var = tk.BooleanVar(value=True)
+        self.autoscale_y_var   = tk.BooleanVar(value=False)
+        self.session_label_var = tk.StringVar(value="DEMO BIOMÉDICA")
+        self._pacing_mode_var  = tk.StringVar(value="VOO")
+        self._ecg_color_idx    = 0
+        self._ecg_color_presets = ["#1A56DB", "#059669", "#DC2626", "#7C3AED", "#0891B2"]
 
         # ── Refs a widgets dinamicos ──────────────────────────────
-        self._lead_buttons = {}       # {0..5: tk.Button}
-        self._qrs_spans    = []       # lista de patches axvspan para QRS
+        self._lead_buttons = {}
+        self._qrs_spans    = []
 
         # ── Construccion de la interfaz ───────────────────────────
         self._create_widgets()
@@ -159,11 +181,9 @@ class ECGApp(tk.Tk):
         self._update_connection_panel()
         self._update_pacemaker_panel()
         self._update_clock()
-        # Dibujar preview bifasico una vez que el canvas tenga tamaño real
         self.after(300, self._draw_biphasic_preview)
 
         # ── Traces para sincronizar parametros de simulacion ──────
-        # Evita actualizar serial_reader cada frame; solo cuando el valor cambia
         for _v in (self.sim_hr_var, self.sim_amp_var, self.sim_noise_var,
                    self.app_state.pace_amplitude_var, self.app_state.pace_bpm_var):
             _v.trace_add("write", self._sync_sim_params)
@@ -176,26 +196,28 @@ class ECGApp(tk.Tk):
         self.after(300, self.check_auto_mode)
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
-
-        # Evitar crashes silenciosos del loop de GUI (Tkinter puede quedar “no responde” si se corta el after)
         self.report_callback_exception = self._on_tk_exception
 
-        # ── Hilo de análisis (picos R / QRS / BPM) para que la GUI no se bloquee ──
-        self._analysis_in_q = queue.Queue(maxsize=1)
-        self._analysis_out_q = queue.Queue(maxsize=1)
+        # ── Hilo de analisis (picos R / QRS / BPM) ───────────────
+        self._analysis_in_q    = queue.Queue(maxsize=1)
+        self._analysis_out_q   = queue.Queue(maxsize=1)
         self._analysis_running = True
-        self._analysis_thread = threading.Thread(
+        self._analysis_thread  = threading.Thread(
             target=self._analysis_loop, name="ECGAnalysisWorker", daemon=True
         )
         self._analysis_thread.start()
 
-        self._analysis_peaks = []
-        self._analysis_qrs = []
-        self._analysis_bpm = 0.0
+        self._analysis_peaks  = []
+        self._analysis_qrs    = []
+        self._analysis_bpm    = 0.0
         self._analysis_rhythm = "---"
 
+    # ==============================================================
+    # ── HELPERS DE EXCEPCION Y ANALISIS (sin cambios) ─────────────
+    # ==============================================================
+
     def _on_tk_exception(self, exc, val, tb):
-        """Evita que una excepción rompa el loop `after` y congele la GUI."""
+        """Evita que una excepcion rompa el loop after y congele la GUI."""
         try:
             import traceback
             traceback.print_exception(exc, val, tb)
@@ -208,7 +230,7 @@ class ECGApp(tk.Tk):
             pass
 
     def _analysis_loop(self):
-        """Hilo de análisis para evitar bloqueos del hilo de GUI."""
+        """Hilo de analisis para evitar bloqueos del hilo de GUI."""
         while self._analysis_running:
             job = None
             try:
@@ -217,16 +239,13 @@ class ECGApp(tk.Tk):
                 continue
             if not job:
                 continue
-
             try:
                 y_centered, sample_rate, r_thr, r_dist = job
-                peaks = detect_r_peaks(y_centered, r_thr, r_dist)
-                bpm = calculate_bpm(peaks, sample_rate)
+                peaks  = detect_r_peaks(y_centered, r_thr, r_dist)
+                bpm    = calculate_bpm(peaks, sample_rate)
                 rhythm = classify_rhythm(bpm)
-                qrs = detect_qrs_complex(y_centered, peaks, sample_rate)
+                qrs    = detect_qrs_complex(y_centered, peaks, sample_rate)
                 result = (peaks, qrs, bpm, rhythm)
-
-                # Dejar solo el resultado más reciente
                 try:
                     while True:
                         self._analysis_out_q.get_nowait()
@@ -237,11 +256,10 @@ class ECGApp(tk.Tk):
                 except Exception:
                     pass
             except Exception:
-                # No matar el hilo por errores puntuales
                 continue
 
     # ==============================================================
-    # ── HELPERS SEGUROS ───────────────────────────────────────────
+    # ── HELPERS SEGUROS (sin cambios) ─────────────────────────────
     # ==============================================================
 
     def _safe_float(self, v, default=0.0):
@@ -259,11 +277,7 @@ class ECGApp(tk.Tk):
             return int(default)
 
     def _sync_sim_params(self, *_):
-        """
-        Sincroniza parametros de simulacion con SerialReader.
-        Se llama via trace cuando cambia cualquier variable de simulacion,
-        NO en cada frame del loop principal.
-        """
+        """Sincroniza parametros de simulacion con SerialReader (via trace, no en cada frame)."""
         try:
             self.serial_reader.sim_heart_rate  = self._safe_float(self.sim_hr_var,    72.0)
             self.serial_reader.sim_amplitude   = self._safe_float(self.sim_amp_var,    1.0)
@@ -273,123 +287,193 @@ class ECGApp(tk.Tk):
         except Exception:
             pass
 
+    def _set_ecg_color(self, color: str):
+        """Cambia el color de la línea ECG en tiempo real."""
+        try:
+            self.ecg_line.set_color(color)
+            self.T["ecg_line"] = color
+            self.mpl_canvas.draw_idle()
+        except Exception:
+            pass
+
+    def _on_pacing_mode_change(self, *_):
+        """Actualiza la descripcion del modo de estimulacion seleccionado."""
+        descriptions = {
+            "VOO": "Asincrónico ventricular\n(sin sensing, pace fijo)",
+            "VVI": "Inhibido ventricular\n(inhibe si hay R propio)",
+            "AOO": "Asincrónico auricular\n(estimula aurícula fija)",
+            "AAI": "Inhibido auricular\n(inhibe si hay P propio)",
+        }
+        mode = self._pacing_mode_var.get()
+        if hasattr(self, "pace_mode_desc"):
+            self.pace_mode_desc.config(text=descriptions.get(mode, ""))
+
     # ==============================================================
-    # ── LAYOUT PRINCIPAL ──────────────────────────────────────────
+    # ── LAYOUT PRINCIPAL (rediseñado) ─────────────────────────────
     # ==============================================================
 
     def _create_widgets(self):
-        """Construye la estructura principal: header + body + status bar."""
+        """
+        Nueva estructura de layout:
+          Topbar (fijo, navy) → ECG plot (full width, expansible) →
+          Tira de metricas (fija, 86px) → Panel de pestanas (fijo, 220px) →
+          Status bar (fijo, 26px, navy)
+        """
         root = tk.Frame(self, bg=self.T["bg"])
-        root.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        root.pack(fill=tk.BOTH, expand=True)
 
-        # Cabecera superior
-        self._create_header(root)
+        # 1. Topbar: titulo + botones de derivacion + badges + reloj
+        self._create_topbar(root)
 
-        # Cuerpo: grafico ECG + sidebar
-        body = tk.Frame(root, bg=self.T["bg"])
-        body.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
-
-        # Columna izquierda: panel del grafico (70%)
+        # 2. Grafico ECG (full width, ocupa el espacio disponible)
         ecg_outer = tk.Frame(
-            body, bg=self.T["panel"],
+            root, bg=self.T["panel"],
             highlightthickness=1, highlightbackground=self.T["border"], bd=0
         )
-        ecg_outer.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+        ecg_outer.pack(fill=tk.BOTH, expand=True, padx=8, pady=(4, 0))
         self._create_ecg_plot(ecg_outer)
 
-        # Columna derecha: sidebar con paneles (30%)
-        sidebar_container = tk.Frame(body, bg=self.T["bg"], width=400)
-        sidebar_container.pack(side=tk.RIGHT, fill=tk.Y)
-        sidebar_container.pack_propagate(False)
+        # 3. Tira de metricas (4 tarjetas horizontales)
+        metrics_frame = tk.Frame(root, bg=self.T["bg"], height=86)
+        metrics_frame.pack(fill=tk.X, padx=8, pady=(5, 0))
+        metrics_frame.pack_propagate(False)
+        self._create_metrics_strip(metrics_frame)
 
-        sidebar = self._create_scrollable_sidebar(sidebar_container)
+        # 4. Panel de pestanas inferior
+        tabs_frame = tk.Frame(root, bg=self.T["bg"], height=248)
+        tabs_frame.pack(fill=tk.X, padx=8, pady=(5, 0))
+        tabs_frame.pack_propagate(False)
+        self._create_tab_panel(tabs_frame)
 
-        self._create_vital_signs_panel(sidebar)
-        self._create_lead_selection_panel(sidebar)
-        self._create_pacemaker_panel(sidebar)
-        self._create_signal_settings_panel(sidebar)
-        self._create_connection_panel(sidebar)
-        self._create_simulation_panel(sidebar)
-
-        # Barra de estado inferior
+        # 5. Status bar (delgada, navy, misma estetica que topbar)
         self._create_status_bar(root)
 
     # ----------------------------------------------------------
-    def _create_header(self, parent):
-        """Barra de cabecera: titulo, badge de conexion, reloj, badge de tema."""
-        hdr = tk.Frame(
-            parent, bg=self.T["panel"],
-            highlightthickness=1, highlightbackground=self.T["border"], bd=0
-        )
-        hdr.pack(fill=tk.X)
+    def _create_topbar(self, parent):
+        """
+        Barra superior navy: [Logo | Derivaciones | AUTO] [Badges + Reloj]
+        Los 6 botones de derivacion viven aqui (vs panel lateral en el original).
+        """
+        bar = tk.Frame(parent, bg=self.T["topbar_bg"])
+        bar.pack(fill=tk.X)
 
-        left = tk.Frame(hdr, bg=self.T["panel"])
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=18, pady=14)
+        # — Seccion izquierda: logo / titulo —
+        left = tk.Frame(bar, bg=self.T["topbar_bg"])
+        left.pack(side=tk.LEFT, padx=(14, 0), pady=10)
 
         tk.Label(
-            left, text="Monitor ECG de Signos Vitales",
-            bg=self.T["panel"], fg=self.T["title"],
-            font=("Segoe UI", 19, "bold"),
+            left, text="ECG MONITOR",
+            bg=self.T["topbar_bg"], fg=self.T["topbar_text"],
+            font=("Segoe UI", 13, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            left, text="Análisis cardiaco en tiempo real",
+            bg=self.T["topbar_bg"], fg=self.T["topbar_muted"],
+            font=("Segoe UI", 7),
         ).pack(anchor="w")
 
+        tk.Frame(bar, bg=self.T["topbar_sep"], width=1).pack(
+            side=tk.LEFT, fill=tk.Y, padx=14, pady=8
+        )
+
+        # — Seccion central: botones de derivacion —
+        center = tk.Frame(bar, bg=self.T["topbar_bg"])
+        center.pack(side=tk.LEFT, pady=10)
+
         tk.Label(
-            left, text="Adquisición de 6 derivaciones   |   Análisis ECG en tiempo real   |   Marcapasos bifásico",
-            bg=self.T["panel"], fg=self.T["muted"],
-            font=("Segoe UI", 9),
-        ).pack(anchor="w", pady=(3, 0))
+            center, text="DERIVACIÓN",
+            bg=self.T["topbar_bg"], fg=self.T["topbar_muted"],
+            font=("Segoe UI", 7, "bold"),
+        ).pack(anchor="w")
 
-        right = tk.Frame(hdr, bg=self.T["panel"])
-        right.pack(side=tk.RIGHT, padx=18, pady=14)
+        btn_row = tk.Frame(center, bg=self.T["topbar_bg"])
+        btn_row.pack(anchor="w")
 
-        # Badge de modo (SIMULACIÓN / HARDWARE)
-        self.mode_badge_hdr = tk.Label(
-            right, text="SIMULACIÓN",
-            font=("Segoe UI", 9, "bold"), padx=10, pady=5, bd=0,
-        )
-        self.mode_badge_hdr.pack(anchor="e", pady=(0, 6))
-        self._set_badge(self.mode_badge_hdr, "SIMULACIÓN", "warning")
+        for name, state in zip(_LEAD_NAMES, range(6)):
+            btn = tk.Button(
+                btn_row, text=name,
+                command=lambda s=state: self.on_lead_select(s),
+                bg=self.T["topbar_btn"], fg=self.T["topbar_text"],
+                activebackground=self.T["primary"], activeforeground="#FFFFFF",
+                relief="flat", bd=0, cursor="hand2",
+                font=("Segoe UI", 9, "bold"),
+                padx=11, pady=4, highlightthickness=0,
+            )
+            btn.pack(side=tk.LEFT, padx=(0, 3))
+            self._lead_buttons[state] = btn
 
-        # Badge de conexion ESP32
-        self.conn_badge_hdr = tk.Label(
-            right, text="DESCONECTADO",
-            font=("Segoe UI", 9, "bold"), padx=10, pady=5, bd=0,
-        )
-        self.conn_badge_hdr.pack(anchor="e", pady=(0, 6))
-        self._set_badge(self.conn_badge_hdr, "DESCONECTADO", "danger")
+        # — Seccion derecha: badges + reloj —
+        right = tk.Frame(bar, bg=self.T["topbar_bg"])
+        right.pack(side=tk.RIGHT, padx=(0, 14), pady=10)
 
-        # Reloj
         self.clock_label = tk.Label(
             right, text="--:--:--",
-            bg=self.T["panel"], fg=self.T["muted"],
-            font=("Segoe UI", 12, "bold"),
+            bg=self.T["topbar_bg"], fg=self.T["topbar_text"],
+            font=("Segoe UI", 13, "bold"),
         )
-        self.clock_label.pack(anchor="e")
+        self.clock_label.pack(side=tk.RIGHT, padx=(12, 0))
+
+        tk.Frame(bar, bg=self.T["topbar_sep"], width=1).pack(
+            side=tk.RIGHT, fill=tk.Y, padx=10, pady=8
+        )
+
+        self.conn_badge_hdr = tk.Label(
+            right, text="DESCONECTADO",
+            font=("Segoe UI", 8, "bold"), padx=9, pady=4, bd=0,
+        )
+        self.conn_badge_hdr.pack(side=tk.RIGHT, padx=(0, 6))
+        self._set_badge(self.conn_badge_hdr, "DESCONECTADO", "danger")
+
+        self.mode_badge_hdr = tk.Label(
+            right, text="SIMULACIÓN",
+            font=("Segoe UI", 8, "bold"), padx=9, pady=4, bd=0,
+        )
+        self.mode_badge_hdr.pack(side=tk.RIGHT, padx=(0, 4))
+        self._set_badge(self.mode_badge_hdr, "SIMULACIÓN", "warning")
 
     # ----------------------------------------------------------
     def _create_ecg_plot(self, parent):
-        """Crea el grafico matplotlib con todos los overlays necesarios."""
-        # Titulo del panel ECG
+        """
+        Grafico matplotlib con tema claro.
+        Fondo blanco, waveform azul, grid azul claro, picos rojo, pace ambar+violeta.
+        """
         title_bar = tk.Frame(parent, bg=self.T["panel"])
-        title_bar.pack(fill=tk.X, padx=16, pady=(14, 4))
+        title_bar.pack(fill=tk.X, padx=14, pady=(10, 4))
 
         tk.Label(
             title_bar, text="Señal ECG en Tiempo Real",
             bg=self.T["panel"], fg=self.T["title"],
-            font=("Segoe UI", 13, "bold"),
+            font=("Segoe UI", 12, "bold"),
         ).pack(side=tk.LEFT)
 
         self.lead_title_label = tk.Label(
             title_bar, text="Derivación II",
-            bg=self.T["panel"], fg=self.T["accent"],
-            font=("Segoe UI", 12, "bold"),
+            bg=self.T["panel"], fg=self.T["primary"],
+            font=("Segoe UI", 11, "bold"),
         )
-        self.lead_title_label.pack(side=tk.RIGHT)
+        self.lead_title_label.pack(side=tk.LEFT, padx=(12, 0))
 
-        divider = tk.Frame(parent, bg=self.T["border"], height=1)
-        divider.pack(fill=tk.X, padx=16)
+        # Leyenda visual de colores del gráfico
+        legend_frame = tk.Frame(title_bar, bg=self.T["panel"])
+        legend_frame.pack(side=tk.RIGHT)
 
-        # ── Figura matplotlib ─────────────────────────────────────
-        self.fig, self.ax = plt.subplots(figsize=(10, 6), dpi=98)
+        _LEGEND = [
+            (self.T["ecg_line"],      "ECG"),
+            (self.T["peak"],          "Pico R"),
+            (self.T["qrs_highlight"], "QRS"),
+            (self.T["pace_spike"],    "Pace +"),
+            ("#7C3AED",               "Pace −"),
+        ]
+        for col, lbl in _LEGEND:
+            tk.Label(legend_frame, text="●", bg=self.T["panel"], fg=col,
+                     font=("Segoe UI", 10)).pack(side=tk.LEFT, padx=(6, 1))
+            tk.Label(legend_frame, text=lbl, bg=self.T["panel"], fg=self.T["muted"],
+                     font=("Segoe UI", 7)).pack(side=tk.LEFT, padx=(0, 4))
+
+        tk.Frame(parent, bg=self.T["border"], height=1).pack(fill=tk.X, padx=14)
+
+        # ── Figura matplotlib (colores claros) ────────────────────
+        self.fig, self.ax = plt.subplots(figsize=(10, 5), dpi=98)
         self.fig.patch.set_facecolor(self.T["panel"])
         self.ax.set_facecolor(self.T["plot_bg"])
 
@@ -399,177 +483,735 @@ class ECGApp(tk.Tk):
         self.ax.tick_params(colors=self.T["plot_text"], labelsize=9)
         self.ax.set_xlabel("Tiempo (s)", color=self.T["plot_text"], fontsize=10)
         self.ax.set_ylabel("Amplitud (mV)", color=self.T["plot_text"], fontsize=10)
-        self.ax.grid(True, color=self.T["grid"], alpha=0.7, linewidth=0.7,
-                     linestyle="--", which="both")
+        self.ax.grid(True, color=self.T["grid"], alpha=0.9, linewidth=0.6,
+                     linestyle="-", which="both")
         self.ax.margins(x=0)
 
-        # Linea de referencia baseline
+        # Baseline
         self.baseline_line = self.ax.axhline(
-            0, color=self.T["baseline"], linewidth=0.9, alpha=0.7, zorder=1
+            0, color=self.T["baseline"], linewidth=0.8, alpha=0.6, zorder=1
         )
 
-        # Marcadores de spike de marcapasos: dos lineas verticales (fase+ y fase-)
-        # Se usan axvline en lugar de axvspan para evitar manipulacion de poligono
+        # Marcadores de spike (dos axvline: fase+ ambar, fase- violeta)
         self._pace_line_pos = self.ax.axvline(
             x=0, color=self.T["pace_spike"], linewidth=2.5,
-            linestyle="--", visible=False, zorder=6, alpha=0.95,
-            label="Pace +"
+            linestyle="--", visible=False, zorder=6, alpha=0.9, label="Pace +"
         )
         self._pace_line_neg = self.ax.axvline(
-            x=0, color=self.T["danger"], linewidth=2.5,
-            linestyle="--", visible=False, zorder=6, alpha=0.95,
-            label="Pace -"
+            x=0, color="#7C3AED", linewidth=2.5,
+            linestyle="--", visible=False, zorder=6, alpha=0.9, label="Pace -"
         )
 
-        # Waveform ECG principal
+        # Waveform ECG (azul fuerte, vs cyan original)
         self.ecg_line, = self.ax.plot(
-            [], [], linewidth=1.7, color=self.T["ecg_line"],
+            [], [], linewidth=1.8, color=self.T["ecg_line"],
             solid_capstyle="round", zorder=4
         )
 
-        # Linea de resaltado QRS (usa NaN para ocultar regiones fuera del QRS)
+        # Resaltado QRS
         self.qrs_line, = self.ax.plot(
-            [], [], linewidth=5, color=self.T["qrs_highlight"],
-            alpha=0.35, zorder=3, solid_capstyle="round"
+            [], [], linewidth=6, color=self.T["qrs_highlight"],
+            alpha=0.25, zorder=3, solid_capstyle="round"
         )
 
-        # Marcadores de picos R
+        # Picos R (triangulos rojos hacia abajo, vs circulos del original)
         self.peaks_line, = self.ax.plot(
-            [], [], linestyle="", marker="o", markersize=6,
+            [], [], linestyle="", marker="v", markersize=7,
             color=self.T["peak"], zorder=7, markeredgewidth=0
         )
 
-        self.fig.subplots_adjust(left=0.07, right=0.98, top=0.96, bottom=0.10)
+        self.fig.subplots_adjust(left=0.07, right=0.98, top=0.94, bottom=0.12)
 
         self.mpl_canvas = FigureCanvasTkAgg(self.fig, master=parent)
         mpl_widget = self.mpl_canvas.get_tk_widget()
-        mpl_widget.pack(fill=tk.BOTH, expand=True, padx=4, pady=(4, 4))
+        mpl_widget.pack(fill=tk.BOTH, expand=True, padx=4, pady=(2, 4))
         mpl_widget.configure(bg=self.T["panel"], highlightthickness=0)
 
     # ----------------------------------------------------------
-    def _create_scrollable_sidebar(self, parent):
-        """Retorna el frame interno del sidebar con scroll vertical."""
-        outer = tk.Frame(parent, bg=self.T["bg"], bd=0, highlightthickness=0)
-        outer.pack(fill=tk.BOTH, expand=True)
+    def _create_metrics_strip(self, parent):
+        """
+        Tira de 4 tarjetas horizontales: BPM | Ritmo | QRS | Señal.
+        Reemplaza el panel 'Signos Vitales' del sidebar original.
+        """
+        def _card(bg_accent):
+            card = tk.Frame(
+                parent, bg=self.T["panel"],
+                highlightthickness=2, highlightbackground=bg_accent, bd=0,
+            )
+            card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True,
+                      padx=(0, 6), pady=2)
+            return card
 
-        self._sb_canvas = tk.Canvas(
-            outer, bg=self.T["bg"], highlightthickness=0, bd=0
+        # — Tarjeta BPM —
+        c1 = _card(self.T["primary"])
+        tk.Label(c1, text="FREC. CARDIACA",
+                 bg=self.T["panel"], fg=self.T["muted"],
+                 font=("Segoe UI", 7, "bold")).pack(anchor="center", pady=(6, 0))
+        self.bpm_big_label = tk.Label(
+            c1, text="---",
+            bg=self.T["panel"], fg=self.T["success"],
+            font=("Segoe UI", 30, "bold"),
         )
-        self._sb_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.bpm_big_label.pack(anchor="center")
+        tk.Label(c1, text="latidos / min",
+                 bg=self.T["panel"], fg=self.T["muted"],
+                 font=("Segoe UI", 7)).pack(anchor="center", pady=(0, 4))
 
-        sb = tk.Scrollbar(outer, orient="vertical", command=self._sb_canvas.yview)
-        sb.pack(side=tk.RIGHT, fill=tk.Y)
-        self._sb_canvas.configure(yscrollcommand=sb.set)
+        # — Tarjeta Ritmo —
+        c2 = _card(self.T["success"])
+        tk.Label(c2, text="RITMO",
+                 bg=self.T["panel"], fg=self.T["muted"],
+                 font=("Segoe UI", 7, "bold")).pack(anchor="center", pady=(6, 0))
+        self.rhythm_badge = tk.Label(
+            c2, text="ASISTOLIA", padx=12, pady=5, bd=0,
+            font=("Segoe UI", 11, "bold"),
+        )
+        self.rhythm_badge.pack(fill=tk.X, padx=10, pady=4)
+        self._set_badge(self.rhythm_badge, "ASISTOLIA", "neutral",
+                        font=("Segoe UI", 11, "bold"))
 
-        self._sb_inner = tk.Frame(self._sb_canvas, bg=self.T["bg"])
-        self._sb_win   = self._sb_canvas.create_window(
-            (0, 0), window=self._sb_inner, anchor="nw"
+        # — Tarjeta QRS —
+        c3 = _card(self.T["accent"])
+        tk.Label(c3, text="COMPLEJOS QRS",
+                 bg=self.T["panel"], fg=self.T["muted"],
+                 font=("Segoe UI", 7, "bold")).pack(anchor="center", pady=(6, 0))
+        self.qrs_count_badge = tk.Label(
+            c3, text="0", padx=12, pady=5, bd=0,
+            font=("Segoe UI", 11, "bold"),
+        )
+        self.qrs_count_badge.pack(fill=tk.X, padx=10, pady=4)
+        self._set_badge(self.qrs_count_badge, "0", "info")
+
+        # — Tarjeta Señal —
+        c4 = _card(self.T["warning"])
+        tk.Label(c4, text="CALIDAD DE SEÑAL",
+                 bg=self.T["panel"], fg=self.T["muted"],
+                 font=("Segoe UI", 7, "bold")).pack(anchor="center", pady=(6, 0))
+        self.sig_quality_badge = tk.Label(
+            c4, text="---", padx=12, pady=5, bd=0,
+            font=("Segoe UI", 11, "bold"),
+        )
+        self.sig_quality_badge.pack(fill=tk.X, padx=10, pady=4)
+        self._set_badge(self.sig_quality_badge, "---", "neutral")
+
+        # — Tarjeta Intervalo R-R —
+        c5 = _card(self.T["accent"])
+        tk.Label(c5, text="INTERVALO R-R",
+                 bg=self.T["panel"], fg=self.T["muted"],
+                 font=("Segoe UI", 7, "bold")).pack(anchor="center", pady=(6, 0))
+        self.rr_interval_badge = tk.Label(
+            c5, text="---", padx=12, pady=5, bd=0,
+            font=("Segoe UI", 16, "bold"),
+        )
+        self.rr_interval_badge.pack(anchor="center")
+        tk.Label(c5, text="ms",
+                 bg=self.T["panel"], fg=self.T["muted"],
+                 font=("Segoe UI", 7)).pack(anchor="center", pady=(0, 4))
+        self._set_badge(self.rr_interval_badge, "---", "accent")
+
+    # ----------------------------------------------------------
+    def _create_tab_panel(self, parent):
+        """
+        Panel de pestanas horizontal en la parte inferior.
+        5 pestanas: DERIVACIONES | MARCAPASOS | SEÑAL | CONEXIÓN | SIMULACIÓN
+        Reemplaza el sidebar scrollable con 6 paneles del original.
+        """
+        # Barra de pestanas
+        tab_bar = tk.Frame(parent, bg=self.T["tab_bar_bg"], height=30)
+        tab_bar.pack(fill=tk.X)
+        tab_bar.pack_propagate(False)
+
+        # Area de contenido
+        self._tab_content_area = tk.Frame(
+            parent, bg=self.T["panel"],
+            highlightthickness=1, highlightbackground=self.T["border"], bd=0,
+        )
+        self._tab_content_area.pack(fill=tk.BOTH, expand=True)
+
+        self._tab_frames = {}
+        self._tab_btns   = {}
+
+        tab_defs = [
+            ("DERIVACIONES", self._build_tab_derivaciones),
+            ("MARCAPASOS",   self._build_tab_pacemaker),
+            ("SEÑAL",        self._build_tab_signal),
+            ("CONEXIÓN",     self._build_tab_connection),
+            ("SIMULACIÓN",   self._build_tab_simulation),
+            ("HARDWARE",     self._build_tab_hardware),
+        ]
+
+        for name, builder in tab_defs:
+            # Frame de contenido (construido pero oculto hasta seleccion)
+            frame = tk.Frame(self._tab_content_area, bg=self.T["panel"])
+            self._tab_frames[name] = frame
+            builder(frame)
+
+            # Boton de pestana
+            btn = tk.Label(
+                tab_bar, text=f"  {name}  ",
+                font=("Segoe UI", 8, "bold"),
+                padx=4, pady=5, cursor="hand2",
+            )
+            btn.pack(side=tk.LEFT)
+            btn.bind("<Button-1>", lambda *_, n=name: self._switch_tab(n))
+            self._tab_btns[name] = btn
+
+        # Mostrar primera pestana por defecto
+        self._switch_tab("DERIVACIONES")
+
+    def _switch_tab(self, name: str):
+        """Muestra la pestana indicada y oculta el resto."""
+        for n, frame in self._tab_frames.items():
+            if n == name:
+                frame.pack(fill=tk.BOTH, expand=True)
+            else:
+                frame.pack_forget()
+
+        for n, btn in self._tab_btns.items():
+            if n == name:
+                btn.config(
+                    bg=self.T["tab_active_bg"],
+                    fg=self.T["tab_active_fg"],
+                )
+            else:
+                btn.config(
+                    bg=self.T["tab_idle_bg"],
+                    fg=self.T["tab_idle_fg"],
+                )
+
+    # ==============================================================
+    # ── CONSTRUCTORES DE PESTANAS ─────────────────────────────────
+    # ==============================================================
+
+    def _build_tab_derivaciones(self, parent):
+        """Pestana DERIVACIONES: badge de derivada activa + auto scan."""
+        # Col 1: derivada activa
+        col1 = self._tab_col(parent, "DERIVADA ACTIVA")
+
+        self.active_lead_badge = tk.Label(
+            col1, text="DERIVACIÓN II", padx=12, pady=7, bd=0,
+            font=("Segoe UI", 13, "bold"),
+        )
+        self.active_lead_badge.pack(fill=tk.X, pady=(0, 4))
+        self._set_badge(self.active_lead_badge, "DERIVACIÓN II", "info",
+                        font=("Segoe UI", 13, "bold"))
+
+        # Col 2: escaneo automatico
+        col2 = self._tab_col(parent, "ESCANEO AUTOMÁTICO")
+
+        self.auto_scan_btn = self._btn(
+            col2, "ESCANEO AUTO  APAGADO", self.on_auto_scan_toggle,
+            kind="neutral", pady=8, font=("Segoe UI", 9, "bold"),
+        )
+        self.auto_scan_btn.pack(fill=tk.X, pady=(0, 6))
+
+        r = self._row(col2, "Intervalo auto (s)", "Segundos entre cambios")
+        self._spinbox(r, self.auto_switch_interval_var, 1.0, 30.0, 1.0, 7).pack()
+
+        # Col 3: informacion
+        col3 = self._tab_col(parent, "INFORMACIÓN", sep=False)
+        tk.Label(
+            col3,
+            text="Selecciona la derivación\nusando los botones\ndel topbar superior.",
+            bg=self.T["panel"], fg=self.T["muted"],
+            font=("Segoe UI", 8), justify="left",
+        ).pack(anchor="w")
+
+    def _build_tab_pacemaker(self, parent):
+        """Pestana MARCAPASOS: trigger, parametros, preview bifasico, auto-pacing."""
+        # Col 1: estado y trigger
+        col1 = self._tab_col(parent, "ESTADO / TRIGGER")
+
+        self.pace_status_badge = tk.Label(
+            col1, text="SIN ALERTA", padx=10, pady=6, bd=0,
+            font=("Segoe UI", 10, "bold"),
+        )
+        self.pace_status_badge.pack(fill=tk.X, pady=(0, 6))
+        self._set_badge(self.pace_status_badge, "SIN ALERTA", "success",
+                        font=("Segoe UI", 10, "bold"))
+
+        self._btn(
+            col1, "DISPARAR PULSO", self.on_pace_trigger,
+            kind="danger", pady=10, font=("Segoe UI", 11, "bold"),
+        ).pack(fill=tk.X)
+
+        # Col 2: parametros del pulso
+        col2 = self._tab_col(parent, "PARÁMETROS DEL PULSO")
+
+        r = self._row(col2, "Amplitud (V)")
+        self._spinbox(r, self.app_state.pace_amplitude_var, 0.1, 3.0, 0.1, 7).pack()
+
+        r = self._row(col2, "Frecuencia (BPM)")
+        self._spinbox(r, self.app_state.pace_bpm_var, 30.0, 200.0, 1.0, 7).pack()
+
+        r = self._row(col2, "Duración (ms)")
+        self._spinbox(r, self.pace_duration_ms_var, 1.0, 30.0, 1.0, 7).pack()
+
+        # Col 3: preview bifasico
+        col3 = self._tab_col(parent, "FORMA DE ONDA BIFÁSICA")
+
+        preview_frame = tk.Frame(
+            col3, bg=self.T["plot_bg"],
+            highlightthickness=1, highlightbackground=self.T["border"],
+            height=62, width=210,
+        )
+        preview_frame.pack(fill=tk.X)
+        preview_frame.pack_propagate(False)
+
+        self.pace_canvas = tk.Canvas(
+            preview_frame, bg=self.T["plot_bg"],
+            highlightthickness=0, height=62,
+        )
+        self.pace_canvas.pack(fill=tk.BOTH, expand=True)
+        self.pace_canvas.bind(
+            "<Configure>", lambda _: self.after_idle(self._draw_biphasic_preview)
         )
 
-        self._sb_inner.bind("<Configure>", lambda _: self._sb_canvas.configure(
-            scrollregion=self._sb_canvas.bbox("all")
-        ))
-        self._sb_canvas.bind("<Configure>", self._on_sb_canvas_resize)
+        # Col 3b: modo de estimulacion
+        col3b = self._tab_col(parent, "MODO MARCAPASOS")
+        r_mode = self._row(col3b, "Modo")
+        mode_options = ["VOO", "VVI", "AOO", "AAI"]
+        mode_menu = tk.OptionMenu(r_mode, self._pacing_mode_var, *mode_options)
+        mode_menu.configure(
+            bg=self.T["neutral_bg"], fg=self.T["text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+            highlightthickness=1, highlightbackground=self.T["border"],
+            relief="flat", font=("Segoe UI", 9), width=8,
+        )
+        mode_menu["menu"].configure(
+            bg=self.T["neutral_bg"], fg=self.T["text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+        )
+        mode_menu.pack()
 
-        for widget in (self._sb_canvas, self._sb_inner):
-            widget.bind("<Enter>", lambda _: self._sb_canvas.bind_all(
-                "<MouseWheel>", self._on_mousewheel
-            ))
-            widget.bind("<Leave>", lambda _: self._sb_canvas.unbind_all("<MouseWheel>"))
+        # Descripcion del modo
+        self.pace_mode_desc = tk.Label(
+            col3b, text="Asincrónico ventricular",
+            bg=self.T["panel"], fg=self.T["muted"],
+            font=("Segoe UI", 7), wraplength=130, justify="left",
+        )
+        self.pace_mode_desc.pack(anchor="w", pady=(4, 0))
+        self._pacing_mode_var.trace_add("write", self._on_pacing_mode_change)
 
-        return self._sb_inner
+        self.pace_energy_badge = self._metric_row(col3b, "Energía pulso")
+        self._set_badge(self.pace_energy_badge, "---", "warning")
 
-    def _on_sb_canvas_resize(self, event):
-        self._sb_canvas.itemconfig(self._sb_win, width=event.width)
+        # Col 4: auto-pacing y badges de parametros
+        col4 = self._tab_col(parent, "AUTO-ESTIMULACIÓN", sep=False)
 
-    def _on_mousewheel(self, event):
-        self._sb_canvas.yview_scroll(int(-event.delta / 120), "units")
+        self.auto_pacing_var.trace_add("write", self._on_auto_pacing_change)
+        chk = tk.Checkbutton(
+            col4, text="Habilitar auto-estimulación",
+            variable=self.auto_pacing_var,
+            bg=self.T["panel"], fg=self.T["text"],
+            selectcolor=self.T["neutral_bg"],
+            activebackground=self.T["panel"],
+            activeforeground=self.T["text"],
+            font=("Segoe UI", 9),
+        )
+        chk.pack(anchor="w", pady=(0, 8))
+
+        self.pace_amp_badge = self._metric_row(col4, "Amplitud activa")
+        self.pace_dur_badge = self._metric_row(col4, "Duración activa")
+        self.pace_bpm_badge = self._metric_row(col4, "Frecuencia activa")
+
+    def _build_tab_signal(self, parent):
+        """Pestana SEÑAL: umbrales de deteccion + ajustes de visualizacion (3 columnas)."""
+        # Col 1: tasa de muestreo + deteccion R
+        col1 = self._tab_col(parent, "DETECCIÓN DE PICOS R")
+
+        self.acq_rate_badge = self._metric_row(col1, "Frec. de muestreo")
+        self._set_badge(self.acq_rate_badge, f"{getattr(config, 'SAMPLE_RATE', 1000)} Hz", "info")
+
+        r = self._row(col1, "Umbral R (V)", "Voltaje min. para detectar R")
+        self._spinbox(r, self.app_state.r_threshold, 0.05, 3.0, 0.05, 7).pack()
+
+        r = self._row(col1, "Distancia R (muestras)", "Min. muestras entre picos")
+        self._spinbox(r, self.app_state.r_distance, 50, 600, 10, 7).pack()
+
+        # Col 2: ganancia y ventana temporal
+        col2 = self._tab_col(parent, "AMPLIFICACIÓN Y VENTANA")
+
+        r = self._row(col2, "Ganancia ECG", "Amplificacion vertical de la señal")
+        self._spinbox(r, self.app_state.ecg_gain, 0.1, 10.0, 0.1, 7).pack()
+
+        r = self._row(col2, "Ventana (muestras)", "Muestras visibles en el grafico")
+        self._spinbox(r, self.app_state.window_size, 200, 5000, 100, 7).pack()
+
+        # Col 3: escala Y y refresco
+        col3 = self._tab_col(parent, "ESCALA Y REFRESCO")
+
+        r = self._row(col3, "Y máx (V)", "Limite del eje vertical")
+        self._spinbox(r, self.app_state.y_max, 0.5, 10.0, 0.1, 7).pack()
+
+        r = self._row(col3, "Refresco (ms)", "Intervalo de actualizacion de GUI")
+        self._spinbox(r, self.refresh_interval_var, 20, 500, 10, 7).pack()
+
+        self.acq_stats_badge = self._metric_row(col3, "Frec. muestreo")
+        self._set_badge(self.acq_stats_badge, f"{getattr(config, 'SAMPLE_RATE', 1000)} Hz", "info")
+
+        # Col 4: opciones de visualizacion y sesion
+        col4 = self._tab_col(parent, "VISUALIZACIÓN", sep=False, min_width=190)
+
+        _chk_opts = [
+            ("Cuadrícula ECG",   self.show_grid_var),
+            ("Picos R (▼)",      self.show_peaks_var),
+            ("Resalte QRS",      self.show_qrs_var),
+            ("Línea base",       self.show_baseline_var),
+            ("Auto-escala Y",    self.autoscale_y_var),
+        ]
+        for txt, var in _chk_opts:
+            tk.Checkbutton(
+                col4, text=txt, variable=var,
+                bg=self.T["panel"], fg=self.T["text"],
+                selectcolor=self.T["neutral_bg"],
+                activebackground=self.T["panel"],
+                activeforeground=self.T["text"],
+                font=("Segoe UI", 8),
+            ).pack(anchor="w", pady=1)
+
+        tk.Frame(col4, bg=self.T["border"], height=1).pack(fill=tk.X, pady=5)
+
+        # Color de la línea ECG
+        color_row = tk.Frame(col4, bg=self.T["panel"])
+        color_row.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(color_row, text="Color ECG:", bg=self.T["panel"],
+                 fg=self.T["muted"], font=("Segoe UI", 7, "bold")).pack(side=tk.LEFT)
+
+        for c in self._ecg_color_presets:
+            tk.Button(
+                color_row, bg=c, width=2, height=1, relief="flat", bd=1,
+                cursor="hand2",
+                command=lambda col=c: self._set_ecg_color(col),
+            ).pack(side=tk.LEFT, padx=1)
+
+        # Etiqueta de sesion
+        tk.Frame(col4, bg=self.T["border"], height=1).pack(fill=tk.X, pady=3)
+        tk.Label(col4, text="Etiqueta de sesión:", bg=self.T["panel"],
+                 fg=self.T["muted"], font=("Segoe UI", 7, "bold")).pack(anchor="w")
+        sess_entry = tk.Entry(
+            col4, textvariable=self.session_label_var,
+            bg=self.T["neutral_bg"], fg=self.T["text"],
+            relief="flat", font=("Segoe UI", 8), width=18,
+            highlightthickness=1, highlightbackground=self.T["border"],
+            insertbackground=self.T["text"],
+        )
+        sess_entry.pack(anchor="w", pady=(2, 0))
+
+    def _build_tab_connection(self, parent):
+        """Pestana CONEXION: puerto serial, baud rate, conectar/desconectar."""
+        # Col 1: modo actual
+        col1 = self._tab_col(parent, "MODO ACTUAL")
+
+        self.hw_mode_badge = tk.Label(
+            col1, text="MODO SIMULACIÓN", padx=10, pady=7, bd=0,
+            font=("Segoe UI", 10, "bold"),
+        )
+        self.hw_mode_badge.pack(fill=tk.X, pady=(0, 6))
+        self._set_badge(self.hw_mode_badge, "MODO SIMULACIÓN", "warning",
+                        font=("Segoe UI", 10, "bold"))
+
+        # Col 2: configuracion de puerto
+        col2 = self._tab_col(parent, "PUERTO SERIAL")
+
+        self._available_ports = list_available_ports() or [config.SERIAL_PORT]
+        r_port = self._row(col2, "Puerto COM")
+        self._port_menu = tk.OptionMenu(r_port, self.port_var, *self._available_ports)
+        self._port_menu.configure(
+            bg=self.T["neutral_bg"], fg=self.T["text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+            highlightthickness=1, highlightbackground=self.T["border"],
+            relief="flat", font=("Segoe UI", 9), width=10,
+        )
+        self._port_menu["menu"].configure(
+            bg=self.T["neutral_bg"], fg=self.T["text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+        )
+        self._port_menu.pack()
+
+        r_baud = self._row(col2, "Baud rate")
+        baud_options = ["9600", "19200", "57600", "115200", "230400"]
+        baud_menu = tk.OptionMenu(r_baud, self.baud_var, *baud_options)
+        baud_menu.configure(
+            bg=self.T["neutral_bg"], fg=self.T["text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+            highlightthickness=1, highlightbackground=self.T["border"],
+            relief="flat", font=("Segoe UI", 9), width=10,
+        )
+        baud_menu["menu"].configure(
+            bg=self.T["neutral_bg"], fg=self.T["text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+        )
+        baud_menu.pack()
+
+        # Col 3: botones de accion
+        col3 = self._tab_col(parent, "ACCIONES")
+
+        self.connect_btn = self._btn(
+            col3, "Conectar", self.on_connect, kind="primary", pady=8,
+        )
+        self.connect_btn.pack(fill=tk.X, pady=(0, 4))
+
+        self._btn(
+            col3, "Actualizar puertos", self.on_refresh_ports,
+            kind="neutral", pady=7,
+        ).pack(fill=tk.X)
+
+        # Col 4: estado de conexion
+        col4 = self._tab_col(parent, "ESTADO DEL HARDWARE", sep=False)
+
+        self.conn_esp32_badge   = self._metric_row(col4, "Estado ESP32")
+        self.conn_samples_badge = self._metric_row(col4, "Muestras totales")
+
+    def _build_tab_simulation(self, parent):
+        """Pestana SIMULACION: parametros del generador de ECG sintetico."""
+        # Col 1: frecuencia y amplitud
+        col1 = self._tab_col(parent, "GENERADOR ECG")
+
+        params = [
+            ("Frec. cardiaca (BPM)", "Frecuencia simulada",
+             self.sim_hr_var,    30.0, 200.0, 1.0),
+            ("Amplitud del ECG",     "Multiplicador de amplitud R",
+             self.sim_amp_var,   0.1,  3.0,   0.1),
+            ("Nivel de ruido (mV)",  "Desviacion estandar del ruido",
+             self.sim_noise_var, 0.0,  0.5,   0.01),
+        ]
+
+        for lbl, hlp, var, fr, to, inc in params:
+            r = self._row(col1, lbl, hlp)
+            self._spinbox(r, var, fr, to, inc, 7).pack()
+
+        # Col 2: tipo de forma de onda y arritmia
+        col2 = self._tab_col(parent, "CONDICIÓN CARDIACA", sep=False)
+
+        r_wf = self._row(col2, "Tipo de onda")
+        wf_options = ["ECG NORMAL", "BRADICARDIA", "TAQUICARDIA"]
+        wf_menu = tk.OptionMenu(r_wf, self.sim_wf_var, *wf_options,
+                                command=self._on_waveform_type_change)
+        wf_menu.configure(
+            bg=self.T["neutral_bg"], fg=self.T["text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+            highlightthickness=1, highlightbackground=self.T["border"],
+            relief="flat", font=("Segoe UI", 9), width=14,
+        )
+        wf_menu["menu"].configure(
+            bg=self.T["neutral_bg"], fg=self.T["text"],
+            activebackground=self.T["primary"], activeforeground="#FFFFFF",
+        )
+        wf_menu.pack()
+
+        self._btn(
+            col2, "Agregar arritmia (5 s)", self.on_add_arrhythmia,
+            kind="warning", pady=8,
+        ).pack(fill=tk.X, pady=(8, 4))
+
+        self.sim_status_badge = self._metric_row(col2, "Estado generador")
+        self._set_badge(self.sim_status_badge, "EN EJECUCIÓN", "success")
+
+    def _build_tab_hardware(self, parent):
+        """Pestaña HARDWARE: mapa de pines ESP32 + diagrama de conexion."""
+        # Col 1: entradas al ESP32
+        col1 = self._tab_col(parent, "PINES ESP32 — ENTRADAS ADC")
+        _IN_PINS = [
+            ("ECG Señal Analógica", "GPIO36 (VP / ADC1_CH0)"),
+            ("MUX Control A",       "GPIO26"),
+            ("MUX Control B",       "GPIO27"),
+            ("MUX Control C",       "GPIO14"),
+            ("Alimentación VCC",    "3V3  (3.3 V)"),
+            ("Tierra (GND)",        "GND"),
+        ]
+        for lbl, pin in _IN_PINS:
+            row = tk.Frame(col1, bg=self.T["panel"])
+            row.pack(fill=tk.X, pady=2)
+            tk.Label(row, text=lbl, bg=self.T["panel"], fg=self.T["text"],
+                     font=("Segoe UI", 7, "bold"), anchor="w").pack(side=tk.LEFT, expand=True, fill=tk.X)
+            tk.Label(row, text=pin, bg=self.T["info_bg"], fg=self.T["info_fg"],
+                     font=("Segoe UI", 7, "bold"), padx=5, pady=1).pack(side=tk.RIGHT)
+
+        # Col 2: salidas del ESP32
+        col2 = self._tab_col(parent, "PINES ESP32 — SALIDAS MARCAPASOS")
+        _OUT_PINS = [
+            ("DAC1 — Fase positiva (+)", "GPIO25  (DAC1)"),
+            ("DAC2 — Fase negativa (−)", "GPIO26  (DAC2)"),
+            ("UART TX → PC",            "GPIO1   (TX0)"),
+            ("UART RX ← PC",            "GPIO3   (RX0)"),
+            ("LED estado",              "GPIO2   (LED azul)"),
+        ]
+        for lbl, pin in _OUT_PINS:
+            row = tk.Frame(col2, bg=self.T["panel"])
+            row.pack(fill=tk.X, pady=2)
+            tk.Label(row, text=lbl, bg=self.T["panel"], fg=self.T["text"],
+                     font=("Segoe UI", 7, "bold"), anchor="w").pack(side=tk.LEFT, expand=True, fill=tk.X)
+            tk.Label(row, text=pin, bg=self.T["warning_bg"], fg=self.T["warning_fg"],
+                     font=("Segoe UI", 7, "bold"), padx=5, pady=1).pack(side=tk.RIGHT)
+
+        # Col 3: MUX CD4051
+        col3 = self._tab_col(parent, "MUX CD4051 — DERIVACIONES")
+        _MUX = [
+            ("A=0 B=0 C=0", "Derivación  I"),
+            ("A=1 B=0 C=0", "Derivación  II"),
+            ("A=0 B=1 C=0", "Derivación  III"),
+            ("A=1 B=1 C=0", "Derivación  aVR"),
+            ("A=0 B=0 C=1", "Derivación  aVL"),
+            ("A=1 B=0 C=1", "Derivación  aVF"),
+        ]
+        for state, lead in _MUX:
+            row = tk.Frame(col3, bg=self.T["panel"])
+            row.pack(fill=tk.X, pady=2)
+            tk.Label(row, text=state, bg=self.T["neutral_bg"], fg=self.T["neutral_fg"],
+                     font=("Segoe UI", 7), padx=4, pady=1).pack(side=tk.LEFT)
+            tk.Label(row, text=lead, bg=self.T["panel"], fg=self.T["primary"],
+                     font=("Segoe UI", 7, "bold")).pack(side=tk.RIGHT)
+
+        # Col 4: diagrama canvas
+        col4 = self._tab_col(parent, "DIAGRAMA DE BLOQUES", sep=False, min_width=230)
+        hw_canvas = tk.Canvas(
+            col4, bg=self.T["plot_bg"], highlightthickness=1,
+            highlightbackground=self.T["border"], height=150, width=220,
+        )
+        hw_canvas.pack(fill=tk.X, pady=4)
+        self.after(400, lambda: self._draw_hw_diagram(hw_canvas))
+
+    def _draw_hw_diagram(self, canvas):
+        """Dibuja diagrama de bloques del sistema en el canvas de hardware."""
+        canvas.update_idletasks()
+        W = canvas.winfo_width() or 220
+        H = 150
+
+        canvas.delete("all")
+        BG    = self.T["plot_bg"]
+        BLUE  = self.T["primary"]
+        AMBER = self.T["warning"]
+        GREEN = self.T["success"]
+        MUTED = self.T["muted"]
+        TEXT  = self.T["text"]
+
+        def _box(x, y, w, h, col, label, sub=None):
+            canvas.create_rectangle(x, y, x+w, y+h, fill=col, outline=MUTED, width=1)
+            canvas.create_text(x+w//2, y+h//2-(5 if sub else 0), text=label,
+                               fill="white", font=("Segoe UI", 7, "bold"), anchor="center")
+            if sub:
+                canvas.create_text(x+w//2, y+h//2+7, text=sub,
+                                   fill="white", font=("Segoe UI", 6), anchor="center")
+
+        def _arrow(x1, y1, x2, y2, col=MUTED):
+            canvas.create_line(x1, y1, x2, y2, fill=col, width=1, arrow=tk.LAST)
+
+        # Bloques
+        _box(4,   55, 38, 24, "#6B7280", "Elect.", "ECG")
+        _box(54,  45, 40, 40, "#0891B2", "MUX",   "CD4051")
+        _box(110, 45, 46, 40, BLUE,      "ESP32",  "ADC")
+        _box(168, 10, 46, 28, "#7C3AED", "PC",     "Python")
+        _box(168, 75, 46, 28, AMBER,     "Pace",   "DAC out")
+
+        # Flechas
+        _arrow(42,  67, 54,  67, GREEN)     # Electrodos → MUX
+        _arrow(94,  67, 110, 67, GREEN)     # MUX → ESP32
+        _arrow(156, 55, 168, 28, BLUE)      # ESP32 → PC
+        _arrow(156, 75, 168, 85, AMBER)     # ESP32 → Marcapasos
+
+        # Labels de flechas
+        canvas.create_text(99, 60, text="ADC", fill=MUTED, font=("Segoe UI", 6))
+        canvas.create_text(160, 40, text="USB", fill=MUTED, font=("Segoe UI", 6))
+        canvas.create_text(162, 83, text="DAC", fill=AMBER, font=("Segoe UI", 6))
+
+        # Notas al pie
+        canvas.create_text(W//2, H-10, text="↑ 1000 Hz · 12-bit ADC · UART 115200",
+                           fill=MUTED, font=("Segoe UI", 6), anchor="center")
 
     # ----------------------------------------------------------
     def _create_status_bar(self, parent):
-        """Barra de estado en la parte inferior de la ventana."""
-        bar = tk.Frame(parent, bg=self.T["panel"],
-                       highlightthickness=1, highlightbackground=self.T["border"],
-                       height=34)
-        bar.pack(fill=tk.X, pady=(8, 0))
+        """
+        Barra de estado inferior (navy, 26px).
+        Misma estetica que el topbar — completamente distinto al status bar gris original.
+        """
+        bar = tk.Frame(parent, bg=self.T["topbar_bg"], height=26)
+        bar.pack(fill=tk.X, pady=(5, 0))
         bar.pack_propagate(False)
 
-        def _status_label(text):
-            return tk.Label(bar, text=text, bg=self.T["panel"],
-                            fg=self.T["muted"], font=("Segoe UI", 9))
+        def _sl(text, fg=None, bold=False):
+            return tk.Label(
+                bar, text=text,
+                bg=self.T["topbar_bg"],
+                fg=fg or self.T["topbar_muted"],
+                font=("Segoe UI", 8, "bold" if bold else "normal"),
+            )
 
-        _status_label("  Muestras:").pack(side=tk.LEFT)
-        self.sb_samples_lbl = _status_label("0")
-        self.sb_samples_lbl.pack(side=tk.LEFT)
+        _sl("  Muestras:").pack(side=tk.LEFT)
+        self.sb_samples_lbl = _sl("0", fg=self.T["topbar_text"], bold=True)
+        self.sb_samples_lbl.pack(side=tk.LEFT, padx=(3, 0))
 
-        tk.Frame(bar, bg=self.T["border"], width=1).pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=6)
+        tk.Frame(bar, bg=self.T["topbar_sep"], width=1).pack(
+            side=tk.LEFT, fill=tk.Y, padx=12, pady=4
+        )
 
-        _status_label("BPM:").pack(side=tk.LEFT)
-        self.sb_bpm_lbl = tk.Label(bar, text="---", bg=self.T["panel"],
-                                   fg=self.T["success"], font=("Segoe UI", 9, "bold"))
+        _sl("BPM:").pack(side=tk.LEFT)
+        self.sb_bpm_lbl = tk.Label(
+            bar, text="---",
+            bg=self.T["topbar_bg"], fg=self.T["success"],
+            font=("Segoe UI", 8, "bold"),
+        )
         self.sb_bpm_lbl.pack(side=tk.LEFT, padx=(4, 0))
 
-        tk.Frame(bar, bg=self.T["border"], width=1).pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=6)
+        tk.Frame(bar, bg=self.T["topbar_sep"], width=1).pack(
+            side=tk.LEFT, fill=tk.Y, padx=12, pady=4
+        )
 
-        _status_label("Ritmo:").pack(side=tk.LEFT)
-        self.sb_rhythm_lbl = tk.Label(bar, text="---", bg=self.T["panel"],
-                                      fg=self.T["muted"], font=("Segoe UI", 9, "bold"))
+        _sl("Ritmo:").pack(side=tk.LEFT)
+        self.sb_rhythm_lbl = tk.Label(
+            bar, text="---",
+            bg=self.T["topbar_bg"], fg=self.T["topbar_muted"],
+            font=("Segoe UI", 8, "bold"),
+        )
         self.sb_rhythm_lbl.pack(side=tk.LEFT, padx=(4, 0))
 
-        tk.Frame(bar, bg=self.T["border"], width=1).pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=6)
-
-        self.sb_mode_lbl = tk.Label(bar, text="MODO SIMULACIÓN", bg=self.T["panel"],
-                                    fg=self.T["warning"], font=("Segoe UI", 9, "bold"))
-        self.sb_mode_lbl.pack(side=tk.RIGHT, padx=12)
-
-        _status_label("  Frec.: 1000 Hz  |  Sesión: DEMO BIOMÉDICA  |").pack(side=tk.RIGHT)
-
-    # ==============================================================
-    # ── HELPERS DE WIDGETS ────────────────────────────────────────
-    # ==============================================================
-
-    def _create_panel(self, parent, title, subtitle=None, color_bar=None):
-        """Crea un panel con cabecera, separador y frame de contenido."""
-        outer = tk.Frame(
-            parent, bg=self.T["panel"],
-            highlightthickness=1, highlightbackground=self.T["border"], bd=0
+        self.sb_mode_lbl = tk.Label(
+            bar, text="MODO SIMULACIÓN",
+            bg=self.T["topbar_bg"], fg=self.T["warning"],
+            font=("Segoe UI", 8, "bold"),
         )
-        outer.pack(fill=tk.X, pady=(0, 10))
+        self.sb_mode_lbl.pack(side=tk.RIGHT, padx=(0, 12))
 
-        # Barra de color izquierda (opcional)
-        if color_bar:
-            accent_bar = tk.Frame(outer, bg=color_bar, width=3)
-            accent_bar.pack(side=tk.LEFT, fill=tk.Y)
+        _sl("Frec.: 1000 Hz  |  Sesión:").pack(side=tk.RIGHT, padx=(0, 4))
+        self.sb_session_lbl = tk.Label(
+            bar, textvariable=self.session_label_var,
+            bg=self.T["topbar_bg"], fg=self.T["topbar_text"],
+            font=("Segoe UI", 8, "bold"),
+        )
+        self.sb_session_lbl.pack(side=tk.RIGHT, padx=(0, 6))
 
-        inner = tk.Frame(outer, bg=self.T["panel"])
-        inner.pack(fill=tk.BOTH, expand=True)
+    # ==============================================================
+    # ── HELPERS DE WIDGETS (estilo Clinical Light) ─────────────────
+    # ==============================================================
 
-        hdr = tk.Frame(inner, bg=self.T["panel"])
-        hdr.pack(fill=tk.X, padx=14, pady=(12, 6))
+    def _tab_col(self, parent, title=None, sep=True, min_width=160):
+        """
+        Columna vertical dentro del panel de pestanas.
+        Las columnas se apilan horizontalmente (side=LEFT).
+        """
+        col = tk.Frame(parent, bg=self.T["panel"], padx=14, pady=6)
+        col.pack(side=tk.LEFT, fill=tk.Y)
 
-        tk.Label(
-            hdr, text=title,
-            bg=self.T["panel"], fg=self.T["title"],
-            font=("Segoe UI", 11, "bold"),
-        ).pack(anchor="w")
+        if min_width:
+            col.configure(width=min_width)
+            col.pack_propagate(False)
 
-        if subtitle:
+        if title:
             tk.Label(
-                hdr, text=subtitle,
+                col, text=title,
                 bg=self.T["panel"], fg=self.T["muted"],
-                font=("Segoe UI", 8),
-            ).pack(anchor="w", pady=(2, 0))
+                font=("Segoe UI", 7, "bold"),
+            ).pack(anchor="w", pady=(0, 5))
 
-        tk.Frame(inner, bg=self.T["border"], height=1).pack(fill=tk.X, padx=14)
+        if sep:
+            tk.Frame(parent, bg=self.T["border"], width=1).pack(
+                side=tk.LEFT, fill=tk.Y, pady=6
+            )
 
-        content = tk.Frame(inner, bg=self.T["panel"])
-        content.pack(fill=tk.BOTH, expand=True, padx=14, pady=(10, 12))
-
-        outer.content = content
-        return outer
+        return col
 
     def _set_badge(self, widget, text, kind="neutral", font=None):
-        """Aplica color de badge a un Label segun el tipo (success/warning/danger...)."""
+        """Aplica color de badge a un Label segun el tipo."""
         palettes = {
             "neutral": (self.T["neutral_bg"], self.T["neutral_fg"]),
             "info":    (self.T["info_bg"],    self.T["info_fg"]),
@@ -583,248 +1225,111 @@ class ECGApp(tk.Tk):
                       font=font or ("Segoe UI", 9, "bold"))
 
     def _btn(self, parent, text, command, kind="primary", font=None, padx=12, pady=9):
-        """Boton de accion con estilo consistente."""
+        """Boton de accion con estilo Clinical Light."""
         colors = {
             "primary": (self.T["primary"],  self.T["primary_active"]),
             "accent":  (self.T["accent"],   self.T["accent_active"]),
             "danger":  (self.T["danger"],   self.T["danger_active"]),
-            "success": (self.T["success"],  "#0d9268"),
-            "neutral": (self.T["neutral_bg"], "#253649"),
+            "success": (self.T["success"],  "#047857"),
+            "neutral": (self.T["neutral_bg"], "#CBD5E6"),
+            "warning": (self.T["warning"],  "#B45309"),
         }
         bg, abg = colors.get(kind, colors["primary"])
+        fg = self.T["text"] if kind == "neutral" else self.T["button_text"]
+        afg = self.T["text"] if kind == "neutral" else self.T["button_text"]
         return tk.Button(
             parent, text=text, command=command,
-            bg=bg, fg=self.T["button_text"],
-            activebackground=abg, activeforeground=self.T["button_text"],
+            bg=bg, fg=fg,
+            activebackground=abg, activeforeground=afg,
             relief="flat", bd=0, cursor="hand2",
             font=font or ("Segoe UI", 9, "bold"),
             padx=padx, pady=pady, highlightthickness=0,
         )
 
     def _spinbox(self, parent, var, from_, to, increment, width=10):
-        """Spinbox numerica con estilo ICU Dark."""
-        sb = tk.Spinbox(
+        """Spinbox con estilo Clinical Light (fondo claro, borde sutil)."""
+        return tk.Spinbox(
             parent, from_=from_, to=to, increment=increment,
             textvariable=var, width=width,
             font=("Segoe UI", 9), justify="center",
             bg=self.T["neutral_bg"], fg=self.T["text"],
             relief="flat", bd=0,
-            buttonbackground=self.T["panel"],
+            buttonbackground=self.T["border"],
             highlightthickness=1, highlightbackground=self.T["border"],
             highlightcolor=self.T["primary"],
             insertbackground=self.T["text"],
         )
-        return sb
 
     def _row(self, parent, label_text, help_text=None):
-        """Fila de dos columnas: etiqueta (izquierda) + widget (derecha)."""
+        """Fila etiqueta (izquierda) + widget (derecha) dentro de una columna de pestana."""
         row = tk.Frame(parent, bg=self.T["panel"])
-        row.pack(fill=tk.X, pady=4)
+        row.pack(fill=tk.X, pady=3)
 
         left = tk.Frame(row, bg=self.T["panel"])
         left.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        tk.Label(left, text=label_text,
-                 bg=self.T["panel"], fg=self.T["text"],
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        tk.Label(
+            left, text=label_text,
+            bg=self.T["panel"], fg=self.T["text"],
+            font=("Segoe UI", 8, "bold"),
+        ).pack(anchor="w")
 
         if help_text:
-            tk.Label(left, text=help_text,
-                     bg=self.T["panel"], fg=self.T["muted"],
-                     font=("Segoe UI", 7), wraplength=160,
-                     justify="left").pack(anchor="w")
+            tk.Label(
+                left, text=help_text,
+                bg=self.T["panel"], fg=self.T["muted"],
+                font=("Segoe UI", 6), wraplength=120, justify="left",
+            ).pack(anchor="w")
 
         right = tk.Frame(row, bg=self.T["panel"])
         right.pack(side=tk.RIGHT, anchor="e")
         return right
 
     def _metric_row(self, parent, label_text):
-        """Fila de metrica: etiqueta + badge de valor."""
+        """Fila de metrica: etiqueta + badge de valor alineado a la derecha."""
         row = tk.Frame(parent, bg=self.T["panel"])
-        row.pack(fill=tk.X, pady=3)
+        row.pack(fill=tk.X, pady=2)
 
-        tk.Label(row, text=label_text,
-                 bg=self.T["panel"], fg=self.T["text"],
-                 font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        tk.Label(
+            row, text=label_text,
+            bg=self.T["panel"], fg=self.T["muted"],
+            font=("Segoe UI", 8),
+        ).pack(side=tk.LEFT)
 
-        badge = tk.Label(row, text="---", padx=8, pady=4, bd=0)
+        badge = tk.Label(row, text="---", padx=8, pady=3, bd=0)
         badge.pack(side=tk.RIGHT)
         self._set_badge(badge, "---", "neutral")
         return badge
 
     # ==============================================================
-    # ── PANEL 1: SIGNOS VITALES ───────────────────────────────────
+    # ── PREVIEW BIFASICO ──────────────────────────────────────────
     # ==============================================================
-
-    def _create_vital_signs_panel(self, parent):
-        p = self._create_panel(parent, "Signos Vitales",
-                               "Parámetros cardiacos en tiempo real", color_bar=self.T["success"])
-        c = p.content
-
-        # BPM grande
-        self.bpm_big_label = tk.Label(
-            c, text="---",
-            bg=self.T["panel"], fg=self.T["success"],
-            font=("Segoe UI", 36, "bold"),
-        )
-        self.bpm_big_label.pack(anchor="center", pady=(4, 0))
-
-        tk.Label(c, text="latidos por minuto",
-                 bg=self.T["panel"], fg=self.T["muted"],
-                 font=("Segoe UI", 8)).pack(anchor="center")
-
-        # Badge de clasificacion del ritmo
-        self.rhythm_badge = tk.Label(
-            c, text="ASISTOLIA", padx=14, pady=6, bd=0,
-            font=("Segoe UI", 11, "bold")
-        )
-        self.rhythm_badge.pack(fill=tk.X, pady=(8, 4))
-        self._set_badge(self.rhythm_badge, "ASISTOLIA", "neutral",
-                        font=("Segoe UI", 11, "bold"))
-
-        # Metricas adicionales
-        self.qrs_count_badge  = self._metric_row(c, "QRS detectados")
-        self.sig_quality_badge = self._metric_row(c, "Calidad de señal")
-
-    # ==============================================================
-    # ── PANEL 2: SELECCIÓN DE DERIVACIÓN ──────────────────────────
-    # ==============================================================
-
-    def _create_lead_selection_panel(self, parent):
-        p = self._create_panel(parent, "Selección de Derivación",
-                               "Derivación de ECG (MUX)", color_bar=self.T["primary"])
-        c = p.content
-
-        # Indicador de derivada activa
-        self.active_lead_badge = tk.Label(
-            c, text="DERIVACIÓN II", padx=10, pady=6, bd=0,
-            font=("Segoe UI", 12, "bold")
-        )
-        self.active_lead_badge.pack(fill=tk.X, pady=(0, 8))
-        self._set_badge(self.active_lead_badge, "DERIVACIÓN II", "info",
-                        font=("Segoe UI", 12, "bold"))
-
-        # Grid 2x3 de botones de derivada
-        grid = tk.Frame(c, bg=self.T["panel"])
-        grid.pack(fill=tk.X, pady=(0, 8))
-
-        leads = list(zip(_LEAD_NAMES, range(6)))
-        for idx, (name, state) in enumerate(leads):
-            btn = self._btn(grid, name, lambda s=state: self.on_lead_select(s),
-                            kind="neutral", padx=6, pady=7,
-                            font=("Segoe UI", 10, "bold"))
-            btn.grid(row=idx // 3, column=idx % 3, padx=3, pady=3, sticky="ew")
-            self._lead_buttons[state] = btn
-
-        grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
-        grid.columnconfigure(2, weight=1)
-
-        # AUTO SCAN toggle
-        self.auto_scan_btn = self._btn(
-            c, "ESCANEO AUTO  APAGADO", self.on_auto_scan_toggle,
-            kind="neutral", pady=7
-        )
-        self.auto_scan_btn.pack(fill=tk.X, pady=(4, 0))
-
-        # Intervalo de auto-scan
-        row = self._row(c, "Intervalo automático (s)", "Segundos entre cambios de derivación")
-        self._spinbox(row, self.auto_switch_interval_var, 1.0, 30.0, 1.0, 8).pack()
-
-    # ==============================================================
-    # ── PANEL 3: PACEMAKER CONTROL ────────────────────────────────
-    # ==============================================================
-
-    def _create_pacemaker_panel(self, parent):
-        p = self._create_panel(parent, "Control de Marcapasos",
-                               "Estimulación con pulso bifásico", color_bar=self.T["danger"])
-        c = p.content
-
-        # Badge de estado del marcapasos
-        self.pace_status_badge = tk.Label(
-            c, text="SIN ALERTA", padx=12, pady=8, bd=0,
-            font=("Segoe UI", 12, "bold")
-        )
-        self.pace_status_badge.pack(fill=tk.X, pady=(0, 6))
-        self._set_badge(self.pace_status_badge, "SIN ALERTA", "success",
-                        font=("Segoe UI", 12, "bold"))
-
-        # BOTON TRIGGER (prominente)
-        self._btn(c, "DISPARAR PULSO", self.on_pace_trigger,
-                  kind="danger", pady=12,
-                  font=("Segoe UI", 12, "bold")).pack(fill=tk.X, pady=(0, 10))
-
-        # Controles de parametros del marcapasos
-        r = self._row(c, "Amplitud (V)", "Altura del pulso (0.1 - 3.0 V)")
-        self._spinbox(r, self.app_state.pace_amplitude_var, 0.1, 3.0, 0.1, 8).pack()
-
-        r = self._row(c, "Frecuencia (BPM)", "Tasa de estimulación (30 - 200 BPM)")
-        self._spinbox(r, self.app_state.pace_bpm_var, 30.0, 200.0, 1.0, 8).pack()
-
-        r = self._row(c, "Duración (ms)", "Ancho del pulso bifásico (1 - 30 ms)")
-        self._spinbox(r, self.pace_duration_ms_var, 1.0, 30.0, 1.0, 8).pack()
-
-        # Preview del pulso bifasico
-        tk.Label(c, text="Vista previa de la forma de onda bifásica:",
-                 bg=self.T["panel"], fg=self.T["muted"],
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(8, 2))
-
-        preview_frame = tk.Frame(c, bg=self.T["plot_bg"],
-                                 highlightthickness=1, highlightbackground=self.T["border"],
-                                 height=70)
-        preview_frame.pack(fill=tk.X)
-        preview_frame.pack_propagate(False)
-
-        self.pace_canvas = tk.Canvas(preview_frame, bg=self.T["plot_bg"],
-                                     highlightthickness=0, height=70)
-        self.pace_canvas.pack(fill=tk.BOTH, expand=True)
-        # Redibujar preview solo cuando cambia el tamaño del canvas (no cada frame)
-        self.pace_canvas.bind("<Configure>", lambda _: self.after_idle(self._draw_biphasic_preview))
-
-        # Checkbox auto-pacing
-        self.auto_pacing_var.trace_add("write", self._on_auto_pacing_change)
-        chk = tk.Checkbutton(
-            c, text="Habilitar auto-estimulación",
-            variable=self.auto_pacing_var,
-            bg=self.T["panel"], fg=self.T["text"],
-            selectcolor=self.T["neutral_bg"],
-            activebackground=self.T["panel"],
-            activeforeground=self.T["text"],
-            font=("Segoe UI", 9),
-        )
-        chk.pack(anchor="w", pady=(8, 0))
-
-        # Fila de metricas del marcapasos
-        self.pace_amp_badge  = self._metric_row(c, "Amplitud del pulso")
-        self.pace_dur_badge  = self._metric_row(c, "Duración del pulso")
-        self.pace_bpm_badge  = self._metric_row(c, "Frecuencia de estimulación")
 
     def _draw_biphasic_preview(self):
-        """Dibuja la forma de onda bifasica en el canvas de preview."""
+        """Dibuja la forma de onda bifasica en el canvas de preview (colores claros)."""
         canvas = self.pace_canvas
         canvas.update_idletasks()
-        W = canvas.winfo_width() or 360
-        H = 70
+        W = canvas.winfo_width() or 210
+        H = 62
 
         canvas.delete("all")
 
-        # Colores de la forma de onda bifasica
-        wave_pos = "#F59E0B"   # naranja — fase positiva
-        wave_neg = "#F87171"   # rojo suave — fase negativa
+        # Colores actualizados: ambar positivo, violeta negativo
+        wave_pos = "#D97706"   # ambar — fase positiva
+        wave_neg = "#7C3AED"   # violeta — fase negativa (vs rojo original)
         base_col = self.T["baseline"]
 
-        cy  = H // 2            # eje Y central
-        amp = int(H * 0.34)     # amplitud en pixeles
-        m   = int(W * 0.08)     # margen lateral
+        cy  = H // 2
+        amp = int(H * 0.33)
+        m   = int(W * 0.08)
 
-        # Coordenadas X de cada segmento del waveform
         x0 = m
-        x1 = m + int((W - 2*m) * 0.25)
-        x2 = m + int((W - 2*m) * 0.50)
-        x3 = m + int((W - 2*m) * 0.75)
+        x1 = m + int((W - 2 * m) * 0.25)
+        x2 = m + int((W - 2 * m) * 0.50)
+        x3 = m + int((W - 2 * m) * 0.75)
         x4 = W - m
 
-        # Linea de baseline (punteada)
+        # Baseline punteada
         canvas.create_line(0, cy, W, cy, fill=base_col, width=1, dash=(3, 3))
 
         # Etiquetas de fase
@@ -833,167 +1338,27 @@ class ECGApp(tk.Tk):
         canvas.create_text(int((x2 + x3) / 2), cy + amp + 8,
                            text="-", fill=wave_neg, font=("Segoe UI", 9, "bold"))
 
-        # Segmento positivo: baseline → subida → fase alta → borde
+        # Fase positiva
         canvas.create_line(
             x0, cy, x1, cy, x1, cy - amp, x2, cy - amp,
-            fill=wave_pos, width=2, smooth=False
+            fill=wave_pos, width=2, smooth=False,
         )
-        # Segmento negativo: borde → fase baja → bajada → baseline
+        # Fase negativa
         canvas.create_line(
             x2, cy + amp, x3, cy + amp, x3, cy, x4, cy,
-            fill=wave_neg, width=2, smooth=False
+            fill=wave_neg, width=2, smooth=False,
         )
-        # Transicion vertical instantanea entre fases
-        canvas.create_line(x2, cy - amp, x2, cy + amp, fill=self.T["muted"], width=1)
+        # Transicion instantanea entre fases
+        canvas.create_line(x2, cy - amp, x2, cy + amp,
+                           fill=self.T["muted"], width=1)
 
-        # Etiquetas de tiempo
-        canvas.create_text(x0, H - 4, text="0", fill=self.T["muted"], font=("Segoe UI", 7))
-        canvas.create_text(x4, H - 4, text="T", fill=self.T["muted"], font=("Segoe UI", 7))
+        canvas.create_text(x0, H - 4, text="0",
+                           fill=self.T["muted"], font=("Segoe UI", 7))
+        canvas.create_text(x4, H - 4, text="T",
+                           fill=self.T["muted"], font=("Segoe UI", 7))
 
     # ==============================================================
-    # ── PANEL 4: AJUSTES DE SEÑAL ─────────────────────────────────
-    # ==============================================================
-
-    def _create_signal_settings_panel(self, parent):
-        p = self._create_panel(parent, "Ajustes de Señal",
-                               "Umbrales de detección y visualización", color_bar=self.T["accent"])
-        c = p.content
-
-        self.acq_rate_badge = self._metric_row(c, "Frecuencia de muestreo")
-        self._set_badge(self.acq_rate_badge, f"{getattr(config,'SAMPLE_RATE',1000)} Hz", "info")
-
-        params = [
-            ("Umbral R (V)",  "Voltaje mínimo de pico para detectar R",
-             self.app_state.r_threshold,   0.05, 3.0,  0.05),
-            ("Distancia R (muestras)","Mínimo de muestras entre picos R",
-             self.app_state.r_distance,    50,   600,  10),
-            ("Ganancia ECG",         "Amplificación vertical de la señal",
-             self.app_state.ecg_gain,      0.1,  10.0, 0.1),
-            ("Ventana (muestras)", "Número de muestras visibles en el gráfico",
-             self.app_state.window_size,   200,  5000, 100),
-            ("Y máx (V)",        "Límite del eje vertical",
-             self.app_state.y_max,         0.5,  10.0, 0.1),
-            ("Refresco (ms)",     "Intervalo de actualización de la GUI",
-             self.refresh_interval_var,    20,   500,  10),
-        ]
-
-        for lbl, help_txt, var, fr, to, inc in params:
-            r = self._row(c, lbl, help_txt)
-            self._spinbox(r, var, fr, to, inc, 9).pack()
-
-    # ==============================================================
-    # ── PANEL 5: CONEXIÓN ─────────────────────────────────────────
-    # ==============================================================
-
-    def _create_connection_panel(self, parent):
-        p = self._create_panel(parent, "Conexión",
-                               "Puerto serial y estado del hardware", color_bar=self.T["warning"])
-        c = p.content
-
-        # Badge de modo grande
-        self.hw_mode_badge = tk.Label(
-            c, text="MODO SIMULACIÓN", padx=12, pady=8, bd=0,
-            font=("Segoe UI", 11, "bold")
-        )
-        self.hw_mode_badge.pack(fill=tk.X, pady=(0, 8))
-        self._set_badge(self.hw_mode_badge, "MODO SIMULACIÓN", "warning",
-                        font=("Segoe UI", 11, "bold"))
-
-        # Selector de puerto COM
-        r_port = self._row(c, "Puerto COM", "Selecciona el puerto serial")
-        self._available_ports = list_available_ports() or [config.SERIAL_PORT]
-        self._port_menu = tk.OptionMenu(r_port, self.port_var, *self._available_ports)
-        self._port_menu.configure(
-            bg=self.T["neutral_bg"], fg=self.T["text"],
-            activebackground=self.T["primary"], activeforeground="white",
-            highlightthickness=0, relief="flat", font=("Segoe UI", 9),
-            width=10,
-        )
-        self._port_menu["menu"].configure(
-            bg=self.T["neutral_bg"], fg=self.T["text"],
-            activebackground=self.T["primary"], activeforeground="white",
-        )
-        self._port_menu.pack()
-
-        # Baud rate
-        r_baud = self._row(c, "Baud rate", "Debe coincidir con el firmware del ESP32")
-        baud_options = ["9600", "19200", "57600", "115200", "230400"]
-        baud_menu = tk.OptionMenu(r_baud, self.baud_var, *baud_options)
-        baud_menu.configure(
-            bg=self.T["neutral_bg"], fg=self.T["text"],
-            activebackground=self.T["primary"], activeforeground="white",
-            highlightthickness=0, relief="flat", font=("Segoe UI", 9),
-            width=10,
-        )
-        baud_menu["menu"].configure(
-            bg=self.T["neutral_bg"], fg=self.T["text"],
-            activebackground=self.T["primary"], activeforeground="white",
-        )
-        baud_menu.pack()
-
-        # Botones de conexion
-        btn_row = tk.Frame(c, bg=self.T["panel"])
-        btn_row.pack(fill=tk.X, pady=(8, 0))
-
-        self.connect_btn = self._btn(
-            btn_row, "Conectar", self.on_connect, kind="primary", pady=8
-        )
-        self.connect_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
-
-        self._btn(btn_row, "Actualizar puertos", self.on_refresh_ports,
-                  kind="neutral", pady=8).pack(side=tk.RIGHT)
-
-        # Metricas
-        self.conn_esp32_badge  = self._metric_row(c, "Estado del ESP32")
-        self.conn_samples_badge = self._metric_row(c, "Muestras totales")
-
-    # ==============================================================
-    # ── PANEL 6: CONTROL DE SIMULACIÓN ────────────────────────────
-    # ==============================================================
-
-    def _create_simulation_panel(self, parent):
-        p = self._create_panel(parent, "Control de Simulación",
-                               "Parámetros del generador de ECG", color_bar=self.T["accent"])
-        c = p.content
-
-        params = [
-            ("Frecuencia cardiaca (BPM)", "Frecuencia simulada (30-200)",
-             self.sim_hr_var,    30.0, 200.0, 1.0),
-            ("Amplitud del ECG",    "Multiplicador de amplitud de la onda R",
-             self.sim_amp_var,   0.1,  3.0,   0.1),
-            ("Nivel de ruido (mV)", "Desviación estándar del ruido gaussiano",
-             self.sim_noise_var, 0.0,  0.5,   0.01),
-        ]
-
-        for lbl, help_txt, var, fr, to, inc in params:
-            r = self._row(c, lbl, help_txt)
-            self._spinbox(r, var, fr, to, inc, 9).pack()
-
-        # Selector de tipo de forma de onda
-        r_wf = self._row(c, "Tipo de forma de onda", "Condición cardiaca predefinida")
-        wf_options = ["ECG NORMAL", "BRADICARDIA", "TAQUICARDIA"]
-        wf_menu = tk.OptionMenu(r_wf, self.sim_wf_var, *wf_options,
-                                command=self._on_waveform_type_change)
-        wf_menu.configure(
-            bg=self.T["neutral_bg"], fg=self.T["text"],
-            activebackground=self.T["primary"], activeforeground="white",
-            highlightthickness=0, relief="flat", font=("Segoe UI", 9), width=14
-        )
-        wf_menu["menu"].configure(
-            bg=self.T["neutral_bg"], fg=self.T["text"],
-            activebackground=self.T["primary"], activeforeground="white",
-        )
-        wf_menu.pack()
-
-        # Boton de arritmia
-        self._btn(c, "Agregar arritmia (5 s)", self.on_add_arrhythmia,
-                  kind="warning", pady=8).pack(fill=tk.X, pady=(10, 0))
-
-        self.sim_status_badge = self._metric_row(c, "Estado del generador")
-        self._set_badge(self.sim_status_badge, "EN EJECUCIÓN", "success")
-
-    # ==============================================================
-    # ── CLOCK ─────────────────────────────────────────────────────
+    # ── RELOJ ─────────────────────────────────────────────────────
     # ==============================================================
 
     def _update_clock(self):
@@ -1003,7 +1368,33 @@ class ECGApp(tk.Tk):
         self.after(1000, self._update_clock)
 
     # ==============================================================
-    # ── ECG PLOT HELPERS ──────────────────────────────────────────
+    # ── ACTUALIZADOR DE BOTONES DE DERIVACION (adaptado al topbar) ─
+    # ==============================================================
+
+    def _update_lead_buttons(self):
+        """Resalta el boton de derivada activa en el topbar (colores navy)."""
+        active = self.app_state.current_mux_state
+        label  = self.app_state.mux_state_label.get(active, "?")
+
+        for state, btn in self._lead_buttons.items():
+            if state == active:
+                btn.config(bg=self.T["primary"], fg="#FFFFFF")
+            else:
+                btn.config(bg=self.T["topbar_btn"], fg=self.T["topbar_text"])
+
+        if hasattr(self, "active_lead_badge"):
+            self._set_badge(self.active_lead_badge, f"DERIVACIÓN {label}", "info",
+                            font=("Segoe UI", 13, "bold"))
+
+        if hasattr(self, "lead_title_label"):
+            self.lead_title_label.config(text=f"Derivación {label}")
+
+        if hasattr(self, "ax"):
+            self.ax.set_title(f"Señal ECG  —  Derivación {label}",
+                              color=self.T["plot_text"], fontsize=11, pad=6)
+
+    # ==============================================================
+    # ── HELPERS DE SEÑAL ECG (sin cambios) ────────────────────────
     # ==============================================================
 
     def _signal_present(self, y_np: np.ndarray) -> bool:
@@ -1034,12 +1425,7 @@ class ECGApp(tk.Tk):
     def _inject_biphasic_spike(self, y_signal, duration_ms, amplitude):
         """
         Inyecta un pulso bifasico al final de la señal visualizada.
-
-        Fase positiva (+amplitude) durante la primera mitad,
-        fase negativa (-amplitude) durante la segunda mitad.
-
-        Retorna:
-            (y_out, x_start_idx, x_end_idx) — señal modificada e indices del spike
+        Retorna: (y_out, x_start_idx, x_end_idx)
         """
         y_out       = np.array(y_signal, dtype=float).copy()
         sample_rate = int(getattr(config, "SAMPLE_RATE", 1000))
@@ -1052,15 +1438,11 @@ class ECGApp(tk.Tk):
         end_idx   = len(y_out) - 2
         start_idx = max(0, end_idx - total_s)
 
-        # Baseline local: mediana de los 50ms previos
-        ref_start    = max(0, start_idx - int(sample_rate * 0.05))
-        local_base   = float(np.median(y_out[ref_start:start_idx])) if start_idx > ref_start else 0.0
+        ref_start  = max(0, start_idx - int(sample_rate * 0.05))
+        local_base = float(np.median(y_out[ref_start:start_idx])) if start_idx > ref_start else 0.0
 
-        # Fase positiva
         y_out[start_idx:start_idx + half_s] = local_base + amplitude
-        # Fase negativa
         y_out[start_idx + half_s:end_idx]   = local_base - amplitude
-        # Transiciones nitidas
         if start_idx > 0:
             y_out[start_idx - 1] = local_base
         if end_idx < len(y_out):
@@ -1069,12 +1451,11 @@ class ECGApp(tk.Tk):
         return y_out, start_idx, end_idx
 
     # ==============================================================
-    # ── ACTUALIZADORES DE PANELES ─────────────────────────────────
+    # ── ACTUALIZADORES DE PANELES (sin cambios de logica) ─────────
     # ==============================================================
 
     def _update_vital_signs(self, bpm: float, rhythm: str, qrs_count: int, sig_ok: bool):
-        """Actualiza el panel SIGNOS VITALES con los valores del frame actual."""
-        # Color del BPM segun el ritmo
+        """Actualiza la tira de metricas con los valores del frame actual."""
         if bpm <= 0:
             bpm_text  = "---"
             bpm_color = self.T["muted"]
@@ -1090,28 +1471,26 @@ class ECGApp(tk.Tk):
 
         self.bpm_big_label.config(text=bpm_text, fg=bpm_color)
 
-        # Badge de ritmo
         rhythm_upper = (rhythm or "").upper()
         rhythm_ui_map = {
-            "NORMAL": "NORMAL",
+            "NORMAL":      "NORMAL",
             "BRADYCARDIA": "BRADICARDIA",
             "TACHYCARDIA": "TAQUICARDIA",
-            "ASYSTOLE": "ASISTOLIA",
+            "ASYSTOLE":    "ASISTOLIA",
         }
         rhythm_colors = {
-            "NORMAL": "success",
+            "NORMAL":      "success",
             "BRADYCARDIA": "warning",
             "TACHYCARDIA": "warning",
-            "ASYSTOLE": "danger",
+            "ASYSTOLE":    "danger",
         }
         kind = rhythm_colors.get(rhythm_upper, "neutral")
-        self._set_badge(self.rhythm_badge, rhythm_ui_map.get(rhythm_upper, rhythm_upper or "---"), kind,
-                        font=("Segoe UI", 11, "bold"))
+        self._set_badge(self.rhythm_badge,
+                        rhythm_ui_map.get(rhythm_upper, rhythm_upper or "---"),
+                        kind, font=("Segoe UI", 11, "bold"))
 
-        # Conteo QRS
         self._set_badge(self.qrs_count_badge, str(qrs_count), "info")
 
-        # Calidad de señal
         if not sig_ok:
             self._set_badge(self.sig_quality_badge, "SIN SEÑAL", "neutral")
         elif bpm > 0:
@@ -1119,26 +1498,13 @@ class ECGApp(tk.Tk):
         else:
             self._set_badge(self.sig_quality_badge, "BAJA", "warning")
 
-    def _update_lead_buttons(self):
-        """Resalta el boton de la derivada activa."""
-        active = self.app_state.current_mux_state
-        label  = self.app_state.mux_state_label.get(active, "?")
-
-        for state, btn in self._lead_buttons.items():
-            if state == active:
-                btn.config(bg=self.T["primary"], fg=self.T["button_text"])
-            else:
-                btn.config(bg=self.T["neutral_bg"], fg=self.T["text"])
-
-        self._set_badge(self.active_lead_badge, f"DERIVACIÓN {label}", "info",
-                        font=("Segoe UI", 12, "bold"))
-
-        if hasattr(self, "lead_title_label"):
-            self.lead_title_label.config(text=f"Derivación {label}")
-
-        if hasattr(self, "ax"):
-            self.ax.set_title(f"Señal ECG  —  Derivación {label}",
-                              color=self.T["plot_text"], fontsize=11, pad=6)
+        # Intervalo R-R
+        if self._last_rr_ms > 0:
+            rr_color = "accent" if 600 <= self._last_rr_ms <= 1000 else "warning"
+            self.rr_interval_badge.config(text=f"{self._last_rr_ms:.0f}")
+            self._set_badge(self.rr_interval_badge, f"{self._last_rr_ms:.0f}", rr_color)
+        else:
+            self._set_badge(self.rr_interval_badge, "---", "neutral")
 
     def _update_pacemaker_panel(self):
         """Actualiza el badge de estado y los chips de parametros del marcapasos."""
@@ -1155,7 +1521,7 @@ class ECGApp(tk.Tk):
             text = "SIN ALERTA"
 
         self._set_badge(self.pace_status_badge, text, kind,
-                        font=("Segoe UI", 12, "bold"))
+                        font=("Segoe UI", 10, "bold"))
 
         amp = self._safe_float(self.app_state.pace_amplitude_var, 1.0)
         dur = self._safe_float(self.pace_duration_ms_var, 4.0)
@@ -1165,27 +1531,32 @@ class ECGApp(tk.Tk):
         self._set_badge(self.pace_dur_badge,  f"{dur:.0f} ms",  "info")
         self._set_badge(self.pace_bpm_badge,  f"{bpm:.0f} BPM", "accent")
 
+        # Energia del pulso: E = V^2 * t / R (R_tejido ≈ 500 Ω)
+        energy_uj = (amp ** 2) * (dur / 1000.0) / 500.0 * 1e6
+        if hasattr(self, "pace_energy_badge"):
+            self._set_badge(self.pace_energy_badge, f"{energy_uj:.1f} µJ", "warning")
+
     def _update_connection_panel(self):
         """Actualiza badges de conexion segun el estado actual."""
         sim  = getattr(self.app_state, "simulation_mode", True)
         conn = self.app_state.esp32_connected
 
         if conn:
-            self._set_badge(self.hw_mode_badge,   "MODO HARDWARE",  "success",
-                            font=("Segoe UI", 11, "bold"))
-            self._set_badge(self.conn_esp32_badge, "EN LÍNEA",        "success")
+            self._set_badge(self.hw_mode_badge,    "MODO HARDWARE",  "success",
+                            font=("Segoe UI", 10, "bold"))
+            self._set_badge(self.conn_esp32_badge,  "EN LÍNEA",        "success")
             self.connect_btn.config(text="Desconectar", bg=self.T["danger"])
-            self._set_badge(self.conn_badge_hdr,  "EN LÍNEA",  "success")
-            self._set_badge(self.mode_badge_hdr,  "HARDWARE", "success")
+            self._set_badge(self.conn_badge_hdr,   "EN LÍNEA",  "success")
+            self._set_badge(self.mode_badge_hdr,   "HARDWARE",  "success")
         else:
             if sim:
                 self._set_badge(self.hw_mode_badge,   "MODO SIMULACIÓN", "warning",
-                                font=("Segoe UI", 11, "bold"))
+                                font=("Segoe UI", 10, "bold"))
                 self._set_badge(self.conn_badge_hdr,  "SIMULACIÓN",      "warning")
                 self._set_badge(self.mode_badge_hdr,  "SIMULACIÓN",      "warning")
             else:
                 self._set_badge(self.hw_mode_badge,   "DESCONECTADO",   "danger",
-                                font=("Segoe UI", 11, "bold"))
+                                font=("Segoe UI", 10, "bold"))
                 self._set_badge(self.conn_badge_hdr,  "DESCONECTADO",   "danger")
                 self._set_badge(self.mode_badge_hdr,  "DESCONECTADO",   "danger")
 
@@ -1195,7 +1566,6 @@ class ECGApp(tk.Tk):
         self._set_badge(self.conn_samples_badge,
                         f"{self.app_state.sample_count:,}", "neutral")
 
-        # Status bar
         mode_text  = "HARDWARE" if conn else "SIMULACIÓN"
         mode_color = self.T["success"] if conn else self.T["warning"]
         self.sb_mode_lbl.config(text=f"MODO {mode_text}", fg=mode_color)
@@ -1212,7 +1582,7 @@ class ECGApp(tk.Tk):
         self.serial_reader.pace_amplitude  = self._safe_float(
             self.app_state.pace_amplitude_var, 1.0
         )
-        self.serial_reader.pace_bpm        = self._safe_float(
+        self.serial_reader.pace_bpm = self._safe_float(
             self.app_state.pace_bpm_var, 60.0
         )
 
@@ -1223,7 +1593,7 @@ class ECGApp(tk.Tk):
             self._set_badge(self.sim_status_badge, "EN EJECUCIÓN", "success")
 
     # ==============================================================
-    # ── ACCION: SELECCION DE DERIVADA ────────────────────────────
+    # ── ACCIONES DE USUARIO (sin cambios de logica) ───────────────
     # ==============================================================
 
     def on_lead_select(self, state: int):
@@ -1246,10 +1616,6 @@ class ECGApp(tk.Tk):
             self.auto_scan_btn.config(text="ESCANEO AUTO  APAGADO",
                                       bg=self.T["neutral_bg"])
 
-    # ==============================================================
-    # ── ACCION: MARCAPASOS ────────────────────────────────────────
-    # ==============================================================
-
     def on_pace_trigger(self):
         """Activa el trigger manual del marcapasos."""
         now = time.time()
@@ -1257,7 +1623,6 @@ class ECGApp(tk.Tk):
         hold = max(0.5, self._safe_float(self.pace_alert_hold_var, 1.5))
         self.app_state.pace_alert_until = now + hold
 
-        # Enviar comando al ESP32 si esta conectado
         if self.app_state.esp32_connected:
             amp  = self._safe_float(self.app_state.pace_amplitude_var, 1.0)
             freq = self._safe_float(self.app_state.pace_bpm_var, 60.0)
@@ -1273,17 +1638,11 @@ class ECGApp(tk.Tk):
             freq = self._safe_float(self.app_state.pace_bpm_var, 60.0)
             self.serial_reader.send_pace_command(amp, freq)
 
-    # ==============================================================
-    # ── ACCION: CONEXION ─────────────────────────────────────────
-    # ==============================================================
-
     def on_connect(self):
         """Conecta al puerto seleccionado o desconecta el hardware."""
         if self.app_state.esp32_connected:
-            # Desconectar → pasar a simulacion
             self._restart_reader(port="NONE_DISCONNECT")
         else:
-            # Intentar conectar al puerto seleccionado
             port = self.port_var.get().strip()
             try:
                 baud = int(self.baud_var.get())
@@ -1327,10 +1686,6 @@ class ECGApp(tk.Tk):
         if self.port_var.get() not in ports and ports:
             self.port_var.set(ports[0])
 
-    # ==============================================================
-    # ── ACCION: SIMULACION ────────────────────────────────────────
-    # ==============================================================
-
     def on_add_arrhythmia(self):
         """Activa arritmia simulada durante 5 segundos."""
         self.serial_reader.sim_arrhythmia       = True
@@ -1347,16 +1702,14 @@ class ECGApp(tk.Tk):
             self.serial_reader.sim_waveform_type = "NORMAL"
 
     # ==============================================================
-    # ── BUCLE PRINCIPAL DE ACTUALIZACION ─────────────────────────
+    # ── BUCLE PRINCIPAL DE ACTUALIZACION (sin cambios) ────────────
     # ==============================================================
 
     def update_gui(self):
         """
         Bucle principal de refresco de la GUI.
-
-        Dos capas de actualizacion:
-          - RAPIDA (cada frame, ~80ms): grafico matplotlib, deteccion de picos.
-          - LENTA  (cada 5 frames, ~400ms): badges del sidebar, status bar.
+        RAPIDA (~80ms): grafico matplotlib, deteccion de picos.
+        LENTA  (~400ms): badges de metricas y pestanas.
         """
         if not self.is_running:
             return
@@ -1364,7 +1717,6 @@ class ECGApp(tk.Tk):
         try:
             self._update_gui_impl()
         except Exception:
-            # No cortar el loop: si no se reprograma el `after`, Tk queda congelado.
             try:
                 import traceback
                 traceback.print_exc()
@@ -1375,26 +1727,22 @@ class ECGApp(tk.Tk):
             self.after(refresh, self.update_gui)
 
     def _update_gui_impl(self):
-        """Implementación del refresco GUI (se llama desde `update_gui`)."""
-
+        """Implementacion del refresco GUI (se llama desde update_gui)."""
         now     = time.time()
 
-        # Separar actualizaciones rapidas (plot) de lentas (widgets sidebar)
         self._frame_count += 1
         do_slow = (self._frame_count % 5 == 0)
 
         win     = max(100, self._safe_int(self.app_state.window_size, 2000))
-        gain    = max(0.1, self._safe_float(self.app_state.ecg_gain, 1.0))
-        y_max_v = max(0.3, self._safe_float(self.app_state.y_max, 2.0))
+        gain    = max(0.1,  self._safe_float(self.app_state.ecg_gain, 1.0))
+        y_max_v = max(0.3,  self._safe_float(self.app_state.y_max, 2.0))
         in_blank = now < getattr(self.app_state, "blank_until", 0.0)
 
-        # ── Snapshot thread-safe del buffer ──────────────────────
         with self.app_state.data_lock:
             x_buf = list(self.app_state.time_buffer)
             y_buf = list(self.app_state.voltage_buffer)
             sc    = int(self.app_state.sample_count)
 
-        # ── Ventana de visualizacion ──────────────────────────────
         if len(x_buf) > 1:
             xw_raw = x_buf[-win:]
             yw     = np.array(y_buf[-win:], dtype=float)
@@ -1405,12 +1753,10 @@ class ECGApp(tk.Tk):
         sample_rate = float(getattr(config, "SAMPLE_RATE", 1000))
         xw_sec      = np.asarray(xw_raw, dtype=float) / sample_rate
 
-        # ── Deteccion de señal activa ─────────────────────────────
         signal_ok = (not in_blank) and self._signal_present(yw)
         self._update_no_signal_state(signal_ok)
         no_sig = getattr(self.app_state, "no_signal", False)
 
-        # ── Blanking o sin señal: solo actualizar plot ────────────
         if in_blank or no_sig:
             self.ecg_line.set_data(xw_sec, np.zeros_like(yw))
             self.peaks_line.set_data([], [])
@@ -1433,23 +1779,20 @@ class ECGApp(tk.Tk):
 
             return
 
-        # ── Centrado DC y ganancia ────────────────────────────────
         n_dc       = min(len(yw), 500)
         dc_offset  = float(np.median(yw[-n_dc:]))
         y_centered = (yw - dc_offset) * gain
 
-        # ── Recibir último resultado del hilo de análisis ─────────
         try:
             while True:
                 peaks, qrs, bpm, rhythm = self._analysis_out_q.get_nowait()
-                self._analysis_peaks = peaks or []
-                self._analysis_qrs = qrs or []
-                self._analysis_bpm = float(bpm or 0.0)
+                self._analysis_peaks  = peaks or []
+                self._analysis_qrs    = qrs or []
+                self._analysis_bpm    = float(bpm or 0.0)
                 self._analysis_rhythm = rhythm or "---"
         except Exception:
             pass
 
-        # ── Spike manual de marcapasos ────────────────────────────
         spike_visible = now < getattr(self.app_state, "pace_alert_until", 0.0)
 
         if getattr(self.app_state, "pace_pulse_pending", False):
@@ -1465,7 +1808,6 @@ class ECGApp(tk.Tk):
                 self._spike_x_sec  = xw_sec[-1] - dur_ms / 1000.0
                 self._spike_x2_sec = xw_sec[-1]
 
-        # ── Deteccion de spike automatico (derivada) ──────────────
         if not spike_visible:
             dy = np.diff(y_centered)
             if len(dy) > 0:
@@ -1480,7 +1822,6 @@ class ECGApp(tk.Tk):
                         half_i = min(si + max(1, len(xw_sec) // 60), len(xw_sec) - 1)
                         self._spike_x2_sec = float(xw_sec[half_i])
 
-        # ── Enviar trabajo al hilo de análisis (no bloqueante) ─────
         r_thr  = max(0.01, self._safe_float(self.app_state.r_threshold, 0.3))
         r_dist = max(10,   self._safe_int(self.app_state.r_distance, 200))
         if self._analysis_running and self._analysis_in_q.empty():
@@ -1496,7 +1837,14 @@ class ECGApp(tk.Tk):
         if bpm > 0:
             self.app_state.last_bpm = bpm
 
-        # Contar nuevos QRS sin doble conteo en ventana deslizante
+        # Calcular intervalo R-R
+        if len(peaks) >= 2:
+            rr_arr = np.diff(peaks)
+            if len(rr_arr) > 0:
+                self._last_rr_ms = float(np.median(rr_arr)) / sample_rate * 1000.0
+        else:
+            self._last_rr_ms = 0.0
+
         for pi in peaks:
             if pi < len(xw_raw):
                 abs_idx = int(xw_raw[pi])
@@ -1505,27 +1853,41 @@ class ECGApp(tk.Tk):
                     self._last_qrs_abs_idx = abs_idx
         self._last_qrs_complexes = list(self._analysis_qrs or [])
 
-        # ── Actualizar artistas matplotlib ────────────────────────
+        # Autoscala Y si está activa
+        if self.autoscale_y_var.get() and len(y_centered) > 0:
+            _p = float(np.percentile(np.abs(y_centered), 98))
+            y_max_v = max(0.3, _p * 1.25)
+
         self.ecg_line.set_data(xw_sec, y_centered)
         self.ax.set_xlim(xw_sec[0], xw_sec[-1])
         self.ax.set_ylim(-y_max_v, y_max_v)
 
-        if peaks:
+        # Aplicar toggles de visualizacion
+        self.baseline_line.set_visible(self.show_baseline_var.get())
+
+        show_pk = self.show_peaks_var.get()
+        if peaks and show_pk:
             self.peaks_line.set_data(
                 [xw_sec[i] for i in peaks if i < len(xw_sec)],
                 [y_centered[i] for i in peaks if i < len(y_centered)],
             )
+            self.peaks_line.set_visible(True)
         else:
             self.peaks_line.set_data([], [])
+            self.peaks_line.set_visible(show_pk)
 
-        # Resaltado QRS: segmentos de la linea gruesa
-        y_qrs = np.full(len(y_centered), np.nan)
-        for qrs in self._last_qrs_complexes:
-            o, f = qrs["onset"], qrs["offset"]
-            y_qrs[o:f + 1] = y_centered[o:f + 1]
-        self.qrs_line.set_data(xw_sec, y_qrs)
+        show_qrs = self.show_qrs_var.get()
+        if show_qrs:
+            y_qrs = np.full(len(y_centered), np.nan)
+            for qrs in self._last_qrs_complexes:
+                o, f = qrs["onset"], qrs["offset"]
+                y_qrs[o:f + 1] = y_centered[o:f + 1]
+            self.qrs_line.set_data(xw_sec, y_qrs)
+            self.qrs_line.set_visible(True)
+        else:
+            self.qrs_line.set_data([], [])
+            self.qrs_line.set_visible(False)
 
-        # Marcadores de spike: dos axvline simples (sin manipulacion de poligonos)
         if spike_visible and self._spike_x_sec is not None:
             x1   = self._spike_x_sec
             xmid = self._spike_x2_sec if self._spike_x2_sec else x1 + 0.010
@@ -1539,9 +1901,14 @@ class ECGApp(tk.Tk):
             self._spike_x_sec  = None
             self._spike_x2_sec = None
 
+        # Cuadricula: solo actualizar en frames lentos para no degradar rendimiento
+        if do_slow:
+            self.ax.grid(self.show_grid_var.get(),
+                         color=self.T["grid"], alpha=0.9, linewidth=0.6,
+                         linestyle="-", which="both")
+
         self.mpl_canvas.draw_idle()
 
-        # ── Actualizaciones lentas del sidebar (~400ms) ───────────
         if do_slow:
             self._update_vital_signs(bpm, rhythm,
                                      self.app_state.qrs_detected_count, signal_ok)
@@ -1556,10 +1923,8 @@ class ECGApp(tk.Tk):
             )
             self.sb_rhythm_lbl.config(text=rhythm)
 
-        return
-
     # ==============================================================
-    # ── CONTROL DE MODO AUTO ──────────────────────────────────────
+    # ── CONTROL DE MODO AUTO (sin cambios) ────────────────────────
     # ==============================================================
 
     def check_auto_mode(self):
@@ -1570,7 +1935,6 @@ class ECGApp(tk.Tk):
         now = time.time()
 
         if not self.auto_scan_active:
-            # Verificar si el timeout de inactividad activa el AUTO
             if self.app_state.operation_mode.get() == config.MODE_MANUAL:
                 idle = now - self.app_state.last_manual_action_time
                 if idle >= config.AUTO_TIMEOUT:
@@ -1609,12 +1973,12 @@ class ECGApp(tk.Tk):
         self.app_state.no_signal       = False
 
     # ==============================================================
-    # ── CIERRE DE LA APLICACION ───────────────────────────────────
+    # ── CIERRE DE LA APLICACION (sin cambios) ─────────────────────
     # ==============================================================
 
     def on_closing(self):
         """Cierra la aplicacion de forma limpia."""
-        self.is_running = False
+        self.is_running        = False
         self._analysis_running = False
 
         try:
