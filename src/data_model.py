@@ -130,8 +130,24 @@ class AppState:
         # Frecuencia de estimulacion del marcapasos (BPM)
         self.pace_bpm_var = tk.DoubleVar(master=master, value=60.0)
 
-        # Amplitud del pulso del marcapasos (Voltios)
-        self.pace_amplitude_var = tk.DoubleVar(master=master, value=1.0)
+        # Corriente del pulso (mA). El voltaje de salida es FIJO en hardware
+        # (config.PACE_VOLTAGE_FIXED_V). La amplitud terapéutica se controla
+        # por CORRIENTE mediante una fuente analógica externa.
+        self.pace_amplitude_var = tk.DoubleVar(
+            master=master,
+            value=float(getattr(config, "PACE_CURRENT_DEFAULT_MA", 5.0)),
+        )
+
+        # Modo de operación del marcapasos: MANUAL (disparo por botón) vs
+        # AUTO (disparo automático ante BAV 2°-Mobitz II, BAV 3° o asistolia)
+        self.pace_mode_var = tk.StringVar(
+            master=master,
+            value=getattr(config, "PACE_MODE_MANUAL", "MANUAL"),
+        )
+
+        # Último diagnóstico AV emitido por el motor de análisis
+        # (ej. "NORMAL", "BAV_3", "ASYSTOLE"; ver peak_detection.DX_*)
+        self.av_diagnosis = "INSUFFICIENT"
 
         # =====================================================
         # -------- METRICAS CARDIACAS -------------------------

@@ -98,17 +98,56 @@ PACE_ALERT_HOLD_SEC  = PACE_UI_ALERT_SEC
 PACE_TIMEOUT_SEC     = 1.5
 PACE_MIN_INTERVAL_SEC = 0.8
 
-# Amplitud del spike de marcapasos (Voltios)
-PACE_SPIKE_AMPLITUDE = 1.0
+# Voltaje fijo de la etapa de salida (V). La amplitud terapéutica
+# se controla por CORRIENTE (control analógico externo).
+PACE_VOLTAGE_FIXED_V = 20.0
 
-# Ancho del spike en samples (~4 ms a 1kHz)
+# Corriente del pulso de estimulación (mA)
+PACE_CURRENT_DEFAULT_MA = 5.0
+PACE_CURRENT_MIN_MA     = 0.5
+PACE_CURRENT_MAX_MA     = 20.0
+
+# Duración del pulso bifásico total (ms) — rango clínico configurable
+PACE_DURATION_DEFAULT_MS = 25.0
+PACE_DURATION_MIN_MS     = 20.0
+PACE_DURATION_MAX_MS     = 40.0
+
+# Pausa interfásica del pulso bifásico (ms)
+PACE_INTERPHASE_PAUSE_MS = 5.0
+
+# Modos de operación del marcapasos
+PACE_MODE_MANUAL = "MANUAL"
+PACE_MODE_AUTO   = "AUTO"
+
+# Compatibilidad con código legado (no usar en lógica nueva)
+PACE_SPIKE_AMPLITUDE     = PACE_CURRENT_DEFAULT_MA
 PACE_SPIKE_WIDTH_SAMPLES = 4
+PACE_SPIKE_DURATION_MS   = PACE_DURATION_DEFAULT_MS
 
-# Duracion del pulso bifasico (ms)
-PACE_SPIKE_DURATION_MS = 4
+# Intervalo mínimo entre comandos 'P' enviados al firmware (anti-flood)
+PACE_MIN_SEND_INTERVAL_SEC = 0.8
+
+# Watchdog: ms sin 'R' tras los cuales el firmware dispara por su cuenta
+PACE_WATCHDOG_TIMEOUT_MS = 3000
 
 # Umbral de derivada para detectar spike automaticamente
 PACE_DERIV_THRESHOLD = 0.6
+
+# =========================================================
+# ---------------- AV BLOCK ANALYSIS ----------------------
+# =========================================================
+
+# Mínimo de intervalos PR necesarios para emitir un diagnóstico AV fiable
+AV_MIN_PR_FOR_DIAGNOSIS = 3
+
+# Umbrales clínicos (ms)
+AV_PR_NORMAL_MAX_MS       = 200.0   # PR > este valor con 1:1 = BAV 1°
+AV_PR_PROGRESSIVE_DIFF_MS = 15.0    # alargamiento progresivo Mobitz I
+AV_PR_STABLE_STD_MS       = 20.0    # PR estable (Mobitz II)
+AV_PR_CHAOTIC_STD_MS      = 50.0    # disociación AV (BAV 3°)
+
+# BPM crítico bajo que justifica marcapasos en presencia de bradicardia
+AV_CRITICAL_LOW_BPM = 40.0
 
 # =========================================================
 # ---------------- DISPLAY / UX ---------------------------

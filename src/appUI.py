@@ -31,7 +31,28 @@ from .peak_detection import (
     calculate_bpm,
     detect_qrs_complex,
     classify_rhythm,
+    analyze_cardiac_cycle,
+    AV_BLOCK_LABELS,
+    AV_RISK_CRITICAL,
+    DX_NORMAL,
+    DX_BAV_1,
+    DX_BAV_2_MOBITZ_I,
+    DX_BAV_2_MOBITZ_II,
+    DX_BAV_3,
+    DX_ASYSTOLE,
+    DX_INSUFFICIENT,
 )
+
+# Color / severidad de cada diagnóstico AV en la UI
+_AV_BADGE_KIND = {
+    DX_NORMAL:          "success",
+    DX_BAV_1:           "warning",
+    DX_BAV_2_MOBITZ_I:  "warning",
+    DX_BAV_2_MOBITZ_II: "danger",
+    DX_BAV_3:           "danger",
+    DX_ASYSTOLE:        "danger",
+    DX_INSUFFICIENT:    "neutral",
+}
 
 # =========================================================
 # ----------- TEMA CLINICAL LIGHT (reemplaza ICU Dark) ----
@@ -129,10 +150,16 @@ class ECGApp(tk.Tk):
         # ── Variables UI propias de la app ────────────────────────
         self.refresh_interval_var     = tk.IntVar(value=int(getattr(config, "REFRESH_INTERVAL", 80)))
         self.auto_switch_interval_var = tk.DoubleVar(value=float(getattr(config, "AUTO_SWITCH_INTERVAL", 8.0)))
-        self.pace_duration_ms_var     = tk.DoubleVar(value=float(getattr(config, "PACE_SPIKE_DURATION_MS", 4.0)))
+        self.pace_duration_ms_var     = tk.DoubleVar(value=float(getattr(config, "PACE_DURATION_DEFAULT_MS", 25.0)))
         self.pace_alert_hold_var      = tk.DoubleVar(value=float(getattr(config, "PACE_UI_ALERT_SEC", 1.5)))
         self.auto_pacing_var          = tk.BooleanVar(value=False)
         self.auto_scan_active         = False
+
+        # ── Watchdog / orden de marcapasos (control fail-safe) ────
+        self._last_pace_sent_time     = 0.0   # timestamp último 'P' enviado
+        self._last_watchdog_beat_idx  = -1    # índice absoluto del último latido cuyo 'R' se envió
+        self._analysis_diagnosis      = DX_INSUFFICIENT
+        self._analysis_pace_needed    = False
 
         # ── Variables de conexion ─────────────────────────────────
         ports        = list_available_ports()
@@ -165,7 +192,6 @@ class ECGApp(tk.Tk):
         self.show_baseline_var = tk.BooleanVar(value=True)
         self.autoscale_y_var   = tk.BooleanVar(value=False)
         self.session_label_var = tk.StringVar(value="DEMO BIOMÉDICA")
-        self._pacing_mode_var  = tk.StringVar(value="VOO")
         self._ecg_color_idx    = 0
         self._ecg_color_presets = ["#1A56DB", "#059669", "#DC2626", "#7C3AED", "#0891B2"]
 
@@ -230,7 +256,18 @@ class ECGApp(tk.Tk):
             pass
 
     def _analysis_loop(self):
-        """Hilo de analisis para evitar bloqueos del hilo de GUI."""
+        """
+        Hilo de análisis (fuera del hilo de GUI).
+
+        Aquí ocurre TODO el cómputo clínico pesado:
+          1) Detección de picos R
+          2) Detección de complejos QRS
+          3) Detección de ondas P + cálculo de intervalos PR
+          4) Clasificación de bloqueos AV
+          5) Decisión de si se requiere marcapasos (riesgo vital)
+
+        El hilo de GUI solo consume el resultado y dibuja / envía serial.
+        """
         while self._analysis_running:
             job = None
             try:
@@ -241,11 +278,16 @@ class ECGApp(tk.Tk):
                 continue
             try:
                 y_centered, sample_rate, r_thr, r_dist = job
-                peaks  = detect_r_peaks(y_centered, r_thr, r_dist)
-                bpm    = calculate_bpm(peaks, sample_rate)
-                rhythm = classify_rhythm(bpm)
-                qrs    = detect_qrs_complex(y_centered, peaks, sample_rate)
-                result = (peaks, qrs, bpm, rhythm)
+
+                # 1. Detección base
+                peaks = detect_r_peaks(y_centered, r_thr, r_dist)
+
+                # 2-5. Análisis clínico integral (BPM + AV + decisión pace)
+                status = analyze_cardiac_cycle(peaks, y_centered, sample_rate)
+
+                result = (peaks, status)
+
+                # Solo dejamos el resultado más reciente en la cola
                 try:
                     while True:
                         self._analysis_out_q.get_nowait()
@@ -350,16 +392,30 @@ class ECGApp(tk.Tk):
             pass
 
     def _on_pacing_mode_change(self, *_):
-        """Actualiza la descripcion del modo de estimulacion seleccionado."""
+        """Actualiza descripción del modo MANUAL / AUTO."""
         descriptions = {
-            "VOO": "Asincrónico ventricular\n(sin sensing, pace fijo)",
-            "VVI": "Inhibido ventricular\n(inhibe si hay R propio)",
-            "AOO": "Asincrónico auricular\n(estimula aurícula fija)",
-            "AAI": "Inhibido auricular\n(inhibe si hay P propio)",
+            config.PACE_MODE_MANUAL: (
+                "MANUAL\nDispara solo al presionar\n«DISPARAR PULSO»."
+            ),
+            config.PACE_MODE_AUTO: (
+                "AUTO\nDispara automáticamente ante\n"
+                "BAV 2° Mobitz II, BAV 3°,\nasistolia o bradicardia crítica."
+            ),
         }
-        mode = self._pacing_mode_var.get()
+        try:
+            mode = self.app_state.pace_mode_var.get()
+        except Exception:
+            mode = config.PACE_MODE_MANUAL
         if hasattr(self, "pace_mode_desc"):
             self.pace_mode_desc.config(text=descriptions.get(mode, ""))
+
+    def _on_pace_duration_change(self, *_):
+        """Cuando el usuario cambia la duración del pulso, sincroniza al firmware."""
+        ms = self._safe_float(self.pace_duration_ms_var, 25.0)
+        try:
+            self.serial_reader.send_pace_duration_ms(ms)
+        except Exception:
+            pass
 
     # ==============================================================
     # ── LAYOUT PRINCIPAL (rediseñado) ─────────────────────────────
@@ -632,8 +688,10 @@ class ECGApp(tk.Tk):
     # ----------------------------------------------------------
     def _create_metrics_strip(self, parent):
         """
-        Tira de 4 tarjetas horizontales: BPM | Ritmo | QRS | Señal.
-        Reemplaza el panel 'Signos Vitales' del sidebar original.
+        Tira de 6 tarjetas horizontales:
+          BPM | Ritmo | Diagnóstico AV | QRS | Señal | Intervalo R-R
+        La tarjeta DIAGNÓSTICO AV es el corazón clínico del sistema —
+        muestra si hay bloqueo AV y de qué grado (decide auto-pacing).
         """
         def _card(bg_accent):
             card = tk.Frame(
@@ -641,7 +699,7 @@ class ECGApp(tk.Tk):
                 highlightthickness=2, highlightbackground=bg_accent, bd=0,
             )
             card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True,
-                      padx=(0, 6), pady=2)
+                      padx=(0, 5), pady=2)
             return card
 
         # — Tarjeta BPM —
@@ -665,12 +723,25 @@ class ECGApp(tk.Tk):
                  bg=self.T["panel"], fg=self.T["muted"],
                  font=("Segoe UI", 7, "bold")).pack(anchor="center", pady=(6, 0))
         self.rhythm_badge = tk.Label(
-            c2, text="ASISTOLIA", padx=12, pady=5, bd=0,
-            font=("Segoe UI", 11, "bold"),
+            c2, text="ASISTOLIA", padx=10, pady=5, bd=0,
+            font=("Segoe UI", 10, "bold"),
         )
-        self.rhythm_badge.pack(fill=tk.X, padx=10, pady=4)
+        self.rhythm_badge.pack(fill=tk.X, padx=8, pady=4)
         self._set_badge(self.rhythm_badge, "ASISTOLIA", "neutral",
-                        font=("Segoe UI", 11, "bold"))
+                        font=("Segoe UI", 10, "bold"))
+
+        # — Tarjeta Diagnóstico AV (nuevo, clave clínica) —
+        c_av = _card(self.T["danger"])
+        tk.Label(c_av, text="DIAGNÓSTICO AV",
+                 bg=self.T["panel"], fg=self.T["muted"],
+                 font=("Segoe UI", 7, "bold")).pack(anchor="center", pady=(6, 0))
+        self.av_block_badge = tk.Label(
+            c_av, text="---", padx=10, pady=5, bd=0,
+            font=("Segoe UI", 10, "bold"),
+        )
+        self.av_block_badge.pack(fill=tk.X, padx=8, pady=4)
+        self._set_badge(self.av_block_badge, "---", "neutral",
+                        font=("Segoe UI", 10, "bold"))
 
         # — Tarjeta QRS —
         c3 = _card(self.T["accent"])
@@ -837,17 +908,27 @@ class ECGApp(tk.Tk):
             kind="danger", pady=10, font=("Segoe UI", 11, "bold"),
         ).pack(fill=tk.X)
 
-        # Col 2: parametros del pulso
+        # Col 2: parametros del pulso (corriente, frecuencia, duración)
         col2 = self._tab_col(parent, "PARÁMETROS DEL PULSO")
 
-        r = self._row(col2, "Amplitud (V)")
-        self._spinbox(r, self.app_state.pace_amplitude_var, 0.1, 3.0, 0.1, 7).pack()
+        # Voltaje fijo (informativo) — el control terapéutico es por CORRIENTE
+        v_fix = float(getattr(config, "PACE_VOLTAGE_FIXED_V", 20.0))
+        tk.Label(col2, text=f"Voltaje fijo: {v_fix:.0f} V",
+                 bg=self.T["panel"], fg=self.T["muted"],
+                 font=("Segoe UI", 7, "italic")).pack(anchor="w", pady=(0, 2))
+
+        i_min = float(getattr(config, "PACE_CURRENT_MIN_MA", 0.5))
+        i_max = float(getattr(config, "PACE_CURRENT_MAX_MA", 20.0))
+        r = self._row(col2, "Corriente (mA)", f"Rango {i_min:.1f}–{i_max:.0f} mA")
+        self._spinbox(r, self.app_state.pace_amplitude_var, i_min, i_max, 0.5, 7).pack()
 
         r = self._row(col2, "Frecuencia (BPM)")
         self._spinbox(r, self.app_state.pace_bpm_var, 30.0, 200.0, 1.0, 7).pack()
 
-        r = self._row(col2, "Duración (ms)")
-        self._spinbox(r, self.pace_duration_ms_var, 1.0, 30.0, 1.0, 7).pack()
+        d_min = float(getattr(config, "PACE_DURATION_MIN_MS", 20.0))
+        d_max = float(getattr(config, "PACE_DURATION_MAX_MS", 40.0))
+        r = self._row(col2, "Duración (ms)", f"Pulso bifásico {d_min:.0f}–{d_max:.0f} ms")
+        self._spinbox(r, self.pace_duration_ms_var, d_min, d_max, 1.0, 7).pack()
 
         # Col 3: preview bifasico
         col3 = self._tab_col(parent, "FORMA DE ONDA BIFÁSICA")
@@ -869,53 +950,59 @@ class ECGApp(tk.Tk):
             "<Configure>", lambda _: self.after_idle(self._draw_biphasic_preview)
         )
 
-        # Col 3b: modo de estimulacion
-        col3b = self._tab_col(parent, "MODO MARCAPASOS")
-        r_mode = self._row(col3b, "Modo")
-        mode_options = ["VOO", "VVI", "AOO", "AAI"]
-        mode_menu = tk.OptionMenu(r_mode, self._pacing_mode_var, *mode_options)
-        mode_menu.configure(
-            bg=self.T["neutral_bg"], fg=self.T["text"],
-            activebackground=self.T["primary"], activeforeground="#FFFFFF",
-            highlightthickness=1, highlightbackground=self.T["border"],
-            relief="flat", font=("Segoe UI", 9), width=8,
-        )
-        mode_menu["menu"].configure(
-            bg=self.T["neutral_bg"], fg=self.T["text"],
-            activebackground=self.T["primary"], activeforeground="#FFFFFF",
-        )
-        mode_menu.pack()
+        # Col 3b: modo de operación + energía calculada
+        col3b = self._tab_col(parent, "MODO DE OPERACIÓN")
 
-        # Descripcion del modo
+        mode_row = tk.Frame(col3b, bg=self.T["panel"])
+        mode_row.pack(fill=tk.X, pady=(0, 4))
+        for label, value in [("MANUAL", config.PACE_MODE_MANUAL),
+                             ("AUTO",   config.PACE_MODE_AUTO)]:
+            rb = tk.Radiobutton(
+                mode_row, text=label, value=value,
+                variable=self.app_state.pace_mode_var,
+                bg=self.T["panel"], fg=self.T["text"],
+                selectcolor=self.T["neutral_bg"],
+                activebackground=self.T["panel"],
+                activeforeground=self.T["text"],
+                font=("Segoe UI", 9, "bold"),
+                indicatoron=True,
+            )
+            rb.pack(side=tk.LEFT, padx=(0, 10))
+
         self.pace_mode_desc = tk.Label(
-            col3b, text="Asincrónico ventricular",
+            col3b,
+            text="MANUAL: disparo por botón\nAUTO: dispara ante BAV alto grado",
             bg=self.T["panel"], fg=self.T["muted"],
-            font=("Segoe UI", 7), wraplength=130, justify="left",
+            font=("Segoe UI", 7), wraplength=160, justify="left",
         )
-        self.pace_mode_desc.pack(anchor="w", pady=(4, 0))
-        self._pacing_mode_var.trace_add("write", self._on_pacing_mode_change)
+        self.pace_mode_desc.pack(anchor="w", pady=(2, 4))
+        self.app_state.pace_mode_var.trace_add("write", self._on_pacing_mode_change)
 
         self.pace_energy_badge = self._metric_row(col3b, "Energía pulso")
         self._set_badge(self.pace_energy_badge, "---", "warning")
 
-        # Col 4: auto-pacing y badges de parametros
-        col4 = self._tab_col(parent, "AUTO-ESTIMULACIÓN", sep=False)
+        # Col 4: parámetros activos
+        col4 = self._tab_col(parent, "PARÁMETROS ACTIVOS", sep=False)
 
+        # Checkbox legacy (sigue habilitando auto-pacing del simulador interno)
         self.auto_pacing_var.trace_add("write", self._on_auto_pacing_change)
         chk = tk.Checkbutton(
-            col4, text="Habilitar auto-estimulación",
+            col4, text="Simular spike en señal",
             variable=self.auto_pacing_var,
             bg=self.T["panel"], fg=self.T["text"],
             selectcolor=self.T["neutral_bg"],
             activebackground=self.T["panel"],
             activeforeground=self.T["text"],
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 8),
         )
-        chk.pack(anchor="w", pady=(0, 8))
+        chk.pack(anchor="w", pady=(0, 6))
 
-        self.pace_amp_badge = self._metric_row(col4, "Amplitud activa")
+        self.pace_amp_badge = self._metric_row(col4, "Corriente activa")
         self.pace_dur_badge = self._metric_row(col4, "Duración activa")
         self.pace_bpm_badge = self._metric_row(col4, "Frecuencia activa")
+
+        # Trace para enviar al firmware cuando cambia la duración
+        self.pace_duration_ms_var.trace_add("write", self._on_pace_duration_change)
 
     def _build_tab_signal(self, parent):
         """Pestana SEÑAL: umbrales de deteccion + ajustes de visualizacion (3 columnas)."""
@@ -1125,20 +1212,22 @@ class ECGApp(tk.Tk):
 
         # ── Columna 1: Entradas al ESP32 ─────────────────────────
         col1 = self._tab_col(parent, "ENTRADAS — ESP32")
-        _pin_row(col1, "ECG analógico",     "GPIO 36  (ADC1_CH0)")
-        _pin_row(col1, "MUX — línea A",     "GPIO 26")
-        _pin_row(col1, "MUX — línea B",     "GPIO 27")
-        _pin_row(col1, "MUX — línea C",     "GPIO 14")
-        _pin_row(col1, "Referencia VCC",    "3V3  (3.3 V)")
-        _pin_row(col1, "Tierra",            "GND")
+        _pin_row(col1, "ECG analógico (post)",  "GPIO 25  (ADC2_CH8)")
+        _pin_row(col1, "ECG analógico (pre)",   "GPIO 26  (ADC2_CH9)")
+        _pin_row(col1, "MUX — línea A (S0)",    "GPIO 16")
+        _pin_row(col1, "MUX — línea B (S1)",    "GPIO 17")
+        _pin_row(col1, "MUX — línea C (S2)",    "GPIO 19")
+        _pin_row(col1, "Referencia VCC",        "3V3  (3.3 V)")
+        _pin_row(col1, "Tierra",                "GND")
 
         # ── Columna 2: Salidas del ESP32 ──────────────────────────
         col2 = self._tab_col(parent, "SALIDAS — ESP32")
-        _pin_row(col2, "Marcapasos  fase +",  "GPIO 25  (DAC 1)", kind="warn")
-        _pin_row(col2, "Marcapasos  fase −",  "GPIO 26  (DAC 2)", kind="warn")
+        _pin_row(col2, "Marcapasos fase +",   "GPIO 32  → driver +", kind="warn")
+        _pin_row(col2, "Marcapasos fase −",   "GPIO 33  → driver −", kind="warn")
+        _pin_row(col2, "Voltaje fijo etapa",  "20 V  (externo)",     kind="warn")
         _pin_row(col2, "Comunicación TX→PC",  "GPIO  1  (UART0 TX)", kind="warn")
         _pin_row(col2, "Comunicación RX←PC",  "GPIO  3  (UART0 RX)", kind="warn")
-        _pin_row(col2, "Velocidad UART",      "115 200 baud", kind="warn")
+        _pin_row(col2, "Velocidad UART",      "115 200 baud",        kind="warn")
 
         # ── Columna 3: Tabla de verdad MUX CD4051 ─────────────────
         col3 = self._tab_col(parent, "MUX CD4051 — SELECCIÓN")
@@ -1519,8 +1608,9 @@ class ECGApp(tk.Tk):
     # ── ACTUALIZADORES DE PANELES (sin cambios de logica) ─────────
     # ==============================================================
 
-    def _update_vital_signs(self, bpm: float, rhythm: str, qrs_count: int, sig_ok: bool):
-        """Actualiza la tira de metricas con los valores del frame actual."""
+    def _update_vital_signs(self, bpm: float, rhythm: str, qrs_count: int,
+                            sig_ok: bool, av_diagnosis: str = DX_INSUFFICIENT):
+        """Actualiza la tira de métricas (incluye badge de bloqueo AV)."""
         if bpm <= 0:
             bpm_text  = "---"
             bpm_color = self.T["muted"]
@@ -1552,7 +1642,17 @@ class ECGApp(tk.Tk):
         kind = rhythm_colors.get(rhythm_upper, "neutral")
         self._set_badge(self.rhythm_badge,
                         rhythm_ui_map.get(rhythm_upper, rhythm_upper or "---"),
-                        kind, font=("Segoe UI", 11, "bold"))
+                        kind, font=("Segoe UI", 10, "bold"))
+
+        # Badge de Diagnóstico AV
+        if not sig_ok:
+            av_label = "---"
+            av_kind  = "neutral"
+        else:
+            av_label = AV_BLOCK_LABELS.get(av_diagnosis, "---")
+            av_kind  = _AV_BADGE_KIND.get(av_diagnosis, "neutral")
+        self._set_badge(self.av_block_badge, av_label, av_kind,
+                        font=("Segoe UI", 10, "bold"))
 
         self._set_badge(self.qrs_count_badge, str(qrs_count), "info")
 
@@ -1572,12 +1672,12 @@ class ECGApp(tk.Tk):
             self._set_badge(self.rr_interval_badge, "---", "neutral")
 
     def _update_pacemaker_panel(self):
-        """Actualiza el badge de estado y los chips de parametros del marcapasos."""
+        """Actualiza badge de estado y chips de parámetros del marcapasos."""
         now = time.time()
 
         if now < getattr(self.app_state, "pace_alert_until", 0.0):
             kind = "danger"
-            text = "MARCAPASOS ACTIVO"
+            text = "¡MARCAPASOS ACTIVO!"
         elif getattr(self.app_state, "no_signal", False):
             kind = "neutral"
             text = "SIN SEÑAL"
@@ -1588,18 +1688,24 @@ class ECGApp(tk.Tk):
         self._set_badge(self.pace_status_badge, text, kind,
                         font=("Segoe UI", 10, "bold"))
 
-        amp = self._safe_float(self.app_state.pace_amplitude_var, 1.0)
-        dur = self._safe_float(self.pace_duration_ms_var, 4.0)
-        bpm = self._safe_float(self.app_state.pace_bpm_var, 60.0)
+        # Parámetros activos. amp = CORRIENTE en mA (voltaje fijo en hardware).
+        i_ma  = self._safe_float(self.app_state.pace_amplitude_var,
+                                 getattr(config, "PACE_CURRENT_DEFAULT_MA", 5.0))
+        dur   = self._safe_float(self.pace_duration_ms_var,
+                                 getattr(config, "PACE_DURATION_DEFAULT_MS", 25.0))
+        bpm   = self._safe_float(self.app_state.pace_bpm_var, 60.0)
+        v_fix = float(getattr(config, "PACE_VOLTAGE_FIXED_V", 20.0))
 
-        self._set_badge(self.pace_amp_badge,  f"{amp:.1f} V",   "danger")
-        self._set_badge(self.pace_dur_badge,  f"{dur:.0f} ms",  "info")
-        self._set_badge(self.pace_bpm_badge,  f"{bpm:.0f} BPM", "accent")
+        self._set_badge(self.pace_amp_badge,  f"{i_ma:.1f} mA",  "danger")
+        self._set_badge(self.pace_dur_badge,  f"{dur:.0f} ms",   "info")
+        self._set_badge(self.pace_bpm_badge,  f"{bpm:.0f} BPM",  "accent")
 
-        # Energia del pulso: E = V^2 * t / R (R_tejido ≈ 500 Ω)
-        energy_uj = (amp ** 2) * (dur / 1000.0) / 500.0 * 1e6
+        # Energía del pulso bifásico:  E = V × I × t (Joule), expresado en µJ
+        # con V fijo (hardware) e I en mA, t en ms.
+        energy_uj = v_fix * i_ma * dur  # V × mA × ms = µJ (1e-3 × 1e-3 × 1e6)
         if hasattr(self, "pace_energy_badge"):
-            self._set_badge(self.pace_energy_badge, f"{energy_uj:.1f} µJ", "warning")
+            self._set_badge(self.pace_energy_badge,
+                            f"{energy_uj:.0f} µJ", "warning")
 
     def _update_connection_panel(self):
         """Actualiza badges de conexion segun el estado actual."""
@@ -1688,16 +1794,24 @@ class ECGApp(tk.Tk):
                                       bg=self.T["neutral_bg"])
 
     def on_pace_trigger(self):
-        """Activa el trigger manual del marcapasos."""
+        """
+        Disparo MANUAL del marcapasos (botón rojo «DISPARAR PULSO»).
+        Funciona tanto en modo MANUAL como AUTO — el botón siempre fuerza un
+        pulso inmediato, ignorando el watchdog.
+        """
         now = time.time()
         self.app_state.pace_pulse_pending = True
         hold = max(0.5, self._safe_float(self.pace_alert_hold_var, 1.5))
         self.app_state.pace_alert_until = now + hold
 
-        if self.app_state.esp32_connected:
-            amp  = self._safe_float(self.app_state.pace_amplitude_var, 1.0)
-            freq = self._safe_float(self.app_state.pace_bpm_var, 60.0)
-            self.serial_reader.send_pace_command(amp, freq)
+        # Sincroniza parámetros y dispara
+        try:
+            dur_ms = self._safe_float(self.pace_duration_ms_var, 25.0)
+            self.serial_reader.send_pace_duration_ms(dur_ms)
+            self.serial_reader.send_pace_trigger()
+            self._last_pace_sent_time = now
+        except Exception:
+            pass
 
     def _on_auto_pacing_change(self, *_):
         """Callback cuando cambia el estado del checkbox de auto-pacing."""
@@ -1841,7 +1955,10 @@ class ECGApp(tk.Tk):
 
             if do_slow:
                 rhythm_d = "ASISTOLIA" if no_sig else "---"
-                self._update_vital_signs(0, rhythm_d, self.app_state.qrs_detected_count, False)
+                self._update_vital_signs(
+                    0, rhythm_d, self.app_state.qrs_detected_count, False,
+                    av_diagnosis=DX_ASYSTOLE if no_sig else DX_INSUFFICIENT,
+                )
                 self._update_pacemaker_panel()
                 self._update_connection_panel()
                 self.sb_samples_lbl.config(text=f"{sc:,}")
@@ -1856,11 +1973,15 @@ class ECGApp(tk.Tk):
 
         try:
             while True:
-                peaks, qrs, bpm, rhythm = self._analysis_out_q.get_nowait()
-                self._analysis_peaks  = peaks or []
-                self._analysis_qrs    = qrs or []
-                self._analysis_bpm    = float(bpm or 0.0)
-                self._analysis_rhythm = rhythm or "---"
+                peaks, status = self._analysis_out_q.get_nowait()
+                self._analysis_peaks       = peaks or []
+                self._analysis_qrs         = status.get("qrs") or []
+                self._analysis_bpm         = float(status.get("bpm") or 0.0)
+                self._analysis_rhythm      = status.get("rhythm") or "---"
+                self._analysis_diagnosis   = status.get("diagnosis") or DX_INSUFFICIENT
+                self._analysis_pace_needed = bool(status.get("pacemaker_needed"))
+                # Espeja diagnóstico en AppState (lectura externa cómoda)
+                self.app_state.av_diagnosis = self._analysis_diagnosis
         except Exception:
             pass
 
@@ -1916,13 +2037,46 @@ class ECGApp(tk.Tk):
         else:
             self._last_rr_ms = 0.0
 
+        new_beats = False
         for pi in peaks:
             if pi < len(xw_raw):
                 abs_idx = int(xw_raw[pi])
                 if abs_idx > self._last_qrs_abs_idx:
                     self.app_state.qrs_detected_count += 1
                     self._last_qrs_abs_idx = abs_idx
+                    new_beats = True
         self._last_qrs_complexes = list(self._analysis_qrs or [])
+
+        # ── Watchdog hardware: 'R' por cada nuevo latido detectado ──
+        # El firmware del ESP32 reinicia su temporizador al recibirlo. Si Python
+        # cae o no detecta latidos, el firmware dispara el marcapasos por sí
+        # mismo tras el timeout (config.PACE_WATCHDOG_TIMEOUT_MS).
+        if new_beats and self._last_qrs_abs_idx != self._last_watchdog_beat_idx:
+            self._last_watchdog_beat_idx = self._last_qrs_abs_idx
+            try:
+                self.serial_reader.send_watchdog_reset()
+            except Exception:
+                pass
+
+        # ── Auto-pacing por bloqueo AV de alto grado / asistolia ────
+        # Solo si el usuario eligió modo AUTO. Rate-limit anti-flood serial.
+        try:
+            pace_mode = self.app_state.pace_mode_var.get()
+        except Exception:
+            pace_mode = config.PACE_MODE_MANUAL
+
+        if (pace_mode == config.PACE_MODE_AUTO) and self._analysis_pace_needed:
+            min_int = float(getattr(config, "PACE_MIN_SEND_INTERVAL_SEC", 0.8))
+            if (now - self._last_pace_sent_time) >= min_int:
+                self._last_pace_sent_time = now
+                try:
+                    self.serial_reader.send_pace_trigger()
+                except Exception:
+                    pass
+                # También dispara el spike visual + alerta UI
+                self.app_state.pace_pulse_pending = True
+                hold = max(0.5, self._safe_float(self.pace_alert_hold_var, 1.5))
+                self.app_state.pace_alert_until = now + hold
 
         # Autoscala Y si está activa
         if self.autoscale_y_var.get() and len(y_centered) > 0:
@@ -1981,8 +2135,10 @@ class ECGApp(tk.Tk):
         self.mpl_canvas.draw_idle()
 
         if do_slow:
-            self._update_vital_signs(bpm, rhythm,
-                                     self.app_state.qrs_detected_count, signal_ok)
+            self._update_vital_signs(
+                bpm, rhythm, self.app_state.qrs_detected_count, signal_ok,
+                av_diagnosis=self._analysis_diagnosis,
+            )
             self._update_pacemaker_panel()
             self._update_connection_panel()
             self._update_simulation_panel()

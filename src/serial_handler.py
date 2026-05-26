@@ -261,7 +261,11 @@ class SerialReader(threading.Thread):
             r_pos_sa   = int(r_pos_fraction * cycle_len)  # indice del pico R en el ciclo
 
             noise_std  = float(self.sim_noise_level)
-            pace_amp   = float(self.pace_amplitude)
+            # pace_amplitude ahora se interpreta como CORRIENTE (mA). Para la
+            # visualización del spike sobre el ECG sintético la normalizamos
+            # a un rango razonable de voltios (0.3 V a 1.7 V).
+            i_ma       = max(0.0, float(self.pace_amplitude))
+            pace_amp   = min(1.7, 0.3 + i_ma / 15.0)
             pacing     = bool(self.auto_pacing_enabled)
 
             batch_voltages = []
@@ -495,11 +499,37 @@ class SerialReader(threading.Thread):
 
     def send_pace_command(self, amplitude: float, frequency: float):
         """
-        Envia comando de marcapasos al ESP32.
+        [Legado] Envía comando de marcapasos al ESP32.
         Formato: 'PACE:{amplitud:.2f},{frecuencia:.1f}\n'
+        Mantenido por compatibilidad. Lo nuevo es send_pace_trigger().
         """
         cmd = f"PACE:{float(amplitude):.2f},{float(frequency):.1f}\n"
         self._send(cmd)
+
+    def send_pace_trigger(self):
+        """
+        Dispara un pulso bifásico inmediato en el firmware.
+        Formato: 'P\\n'  (P de Pace).
+        Es la orden de RIESGO VITAL.
+        """
+        self._send("P\n")
+
+    def send_watchdog_reset(self):
+        """
+        Reset del watchdog del firmware. Indica al ESP32 que se acaba de
+        detectar un latido propio del paciente, por lo que NO debe disparar
+        el marcapasos por sí solo.
+        Formato: 'R\\n'.
+        """
+        self._send("R\n")
+
+    def send_pace_duration_ms(self, duration_ms: float):
+        """
+        Configura la duración total del pulso bifásico en el firmware.
+        Formato: 'D:{ms:.0f}\\n' (rango clínico 20–40 ms).
+        """
+        ms = max(1.0, float(duration_ms))
+        self._send(f"D:{ms:.0f}\n")
 
     def stop(self):
         """Detiene el hilo de adquisicion y cierra el puerto serial."""
